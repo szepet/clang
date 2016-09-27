@@ -25,6 +25,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SubEngine.h"
+#include "clang/Frontend/CompilerInstance.h"
 
 namespace clang {
 
@@ -56,6 +57,8 @@ public:
   };
 
 private:
+  CompilerInstance &CI;
+
   AnalysisManager &AMgr;
   
   AnalysisDeclContextManager &AnalysisDeclContexts;
@@ -97,9 +100,8 @@ private:
   InliningModes HowToInline;
 
 public:
-  ExprEngine(AnalysisManager &mgr, bool gcEnabled,
-             SetOfConstDecls *VisitedCalleesIn,
-             FunctionSummariesTy *FS,
+  ExprEngine(CompilerInstance &CI, AnalysisManager &mgr, bool gcEnabled,
+             SetOfConstDecls *VisitedCalleesIn, FunctionSummariesTy *FS,
              InliningModes HowToInlineIn);
 
   ~ExprEngine() override;
@@ -131,6 +133,8 @@ public:
   SValBuilder &getSValBuilder() { return svalBuilder; }
 
   BugReporter& getBugReporter() { return BR; }
+
+  CompilerInstance & getCompilerInstance() { return CI; }
 
   const NodeBuilderContext &getBuilderContext() {
     assert(currBldrCtx);

@@ -29,6 +29,7 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/TrailingObjects.h"
+#include "clang/Frontend/CompilerInstance.h"
 
 namespace clang {
 struct ASTTemplateArgumentListInfo;
@@ -50,6 +51,7 @@ class TypeAliasTemplateDecl;
 class TypeLoc;
 class UnresolvedSetImpl;
 class VarTemplateDecl;
+class CompilerInstance;
 
 /// \brief A container of type source information.
 ///
@@ -1831,6 +1833,8 @@ public:
     const FunctionDecl* Definition;
     return getBody(Definition);
   }
+
+  const FunctionDecl *getXTUDefinition(CompilerInstance &CI) const;
 
   /// isThisDeclarationADefinition - Returns whether this specific
   /// declaration of the function is also a definition. This does not

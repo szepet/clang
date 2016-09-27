@@ -52,6 +52,8 @@ private:
   ASTContext &Context;
   DiagnosticsEngine &Diags;
   const ManglerKind Kind;
+  //TODO-CTU: check if we need it
+  bool ShouldForceMangleProto;
 
   llvm::DenseMap<const BlockDecl*, unsigned> GlobalBlockIds;
   llvm::DenseMap<const BlockDecl*, unsigned> LocalBlockIds;
@@ -87,6 +89,11 @@ public:
     return Result.first->second;
   }
 
+ 
+  bool shouldForceMangleProto() const { return ShouldForceMangleProto; }
+  void setShouldForceMangleProto(bool ForceMangleArguments) {
+    ShouldForceMangleProto = ForceMangleArguments;
+  }
   /// @name Mangler Entry Points
   /// @{
 

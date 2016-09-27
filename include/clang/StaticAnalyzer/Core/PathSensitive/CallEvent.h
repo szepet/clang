@@ -165,6 +165,10 @@ private:
   void Release() const;
 
 protected:
+  typedef llvm::StringMap<std::string> FunctionFileMapping;
+  typedef llvm::StringMap<clang::ASTUnit*> FunctionAstUnitMapping;
+  typedef llvm::StringMap<clang::ASTUnit*> FileASTUnitMapping;
+
   friend class CallEventManager;
 
   CallEvent(const Expr *E, ProgramStateRef state, const LocationContext *lctx)
@@ -386,6 +390,11 @@ private:
   struct GetTypeFn {
     QualType operator()(ParmVarDecl *PD) const { return PD->getType(); }
   };
+  
+protected:
+  static FileASTUnitMapping FileASTUnitMap;
+  static FunctionAstUnitMapping FunctionAstUnitMap;
+  static FunctionFileMapping FunctionFileMap;
 
 public:
   /// Return call's formal parameters.
@@ -436,7 +445,9 @@ public:
     return cast<FunctionDecl>(CallEvent::getDecl());
   }
 
-  RuntimeDefinition getRuntimeDefinition() const override {
+  RuntimeDefinition getRuntimeDefinition() const override;
+/*XTU This is implemented in CallEvent.cpp
+ {
     const FunctionDecl *FD = getDecl();
     // Note that the AnalysisDeclContext will have the FunctionDecl with
     // the definition (if one exists).
@@ -450,7 +461,7 @@ public:
 
     return RuntimeDefinition();
   }
-
+*/
   bool argumentsMayEscape() const override;
 
   void getInitialStackFrameContents(const StackFrameContext *CalleeCtx,
