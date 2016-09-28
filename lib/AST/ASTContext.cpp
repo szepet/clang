@@ -13,6 +13,7 @@
 
 #include "clang/AST/ASTContext.h"
 #include "CXXABI.h"
+#include "clang/AST/ASTImporter.h"
 #include "clang/AST/ASTMutationListener.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/CharUnits.h"
@@ -34,11 +35,14 @@
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Frontend/ASTUnit.h"
+#include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Support/Capacity.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
+#include <fstream>
 #include <map>
 
 using namespace clang;
@@ -1418,6 +1422,167 @@ const llvm::fltSemantics &ASTContext::getFloatTypeSemantics(QualType T) const {
   case BuiltinType::Float128:   return Target->getFloat128Format();
   }
 }
+
+
+//===----------------------------------------------------------------------===//
+//                         Cross-translation unit support
+//===----------------------------------------------------------------------===//
+
+// FIXME: temporary solution, replace with frontend option
+const char *getBuildDir() {
+  const char *BuildDir;
+  if ((BuildDir = getenv("OUT_DIR")) != NULL)
+    return BuildDir;
+  if ((BuildDir = getenv("TEMP")) != NULL)
+    return BuildDir;
+  if ((BuildDir = getenv("TMP")) != NULL)
+    return BuildDir;
+  if ((BuildDir = getenv("TMPDIR")) != NULL)
+    return BuildDir;
+  return "/tmp";
+}
+const char *getExplicitBuildDir() {
+  return getenv("OUT_DIR");
+}
+
+std::string getMangledName(const NamedDecl *ND, MangleContext *MangleCtx) {
+  std::string MangledName;
+  llvm::raw_string_ostream OS(MangledName);
+  if (const CXXConstructorDecl *CCD = dyn_cast<CXXConstructorDecl>(ND))
+    // FIXME: Use correct Ctor/DtorType
+    MangleCtx->mangleCXXCtor(CCD, Ctor_Complete, OS);
+  else if (const CXXDestructorDecl *CDD = dyn_cast<CXXDestructorDecl>(ND))
+    MangleCtx->mangleCXXDtor(CDD, Dtor_Complete, OS);
+  else
+    MangleCtx->mangleName(ND, OS);
+  ASTContext &Ctx = ND->getASTContext();
+  // We are not going to support vendor and don't support OS and environment.
+  // FIXME: support OS and environment correctly
+  llvm::Triple::ArchType T = Ctx.getTargetInfo().getTriple().getArch();
+  if (T == llvm::Triple::thumb)
+    T = llvm::Triple::arm;
+  OS << "@" << Ctx.getTargetInfo().getTriple().getArchTypeName(T);
+  return OS.str();
+}
+
+const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,CompilerInstance &CI,
+                                                 Sema *S) {
+  assert(!FD->hasBody() && "FD has a definition in current translation unit!");
+  if (!FD->getType()->getAs<FunctionProtoType>())
+    return NULL; // cannot even mangle that
+  ImportMapping::const_iterator FoundImport = ImportMap.find(FD);
+  if (FoundImport != ImportMap.end())
+    return FoundImport->second;
+
+  std::string ASTFileName;
+  IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts = new DiagnosticOptions();
+  TextDiagnosticPrinter *DiagClient =
+    new TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
+  IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+  DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagClient);
+  std::unique_ptr<MangleContext> MangleCtx(ItaniumMangleContext::create(
+        FD->getASTContext(), Diags));
+  MangleCtx->setShouldForceMangleProto(true);
+  std::string MangledFnName = getMangledName(FD, MangleCtx.get());
+  std::string BuildDir = getBuildDir();
+  std::string ExternalFunctionMap = BuildDir + "/externalFnMap.txt";
+  ASTUnit *Unit = NULL;
+
+  FunctionAstUnitMapping::const_iterator FnUnitCacheEntry =
+      FunctionAstUnitMap.find(MangledFnName);
+  if (FnUnitCacheEntry == FunctionAstUnitMap.end()) {
+    if (FunctionFileMap.empty()) {
+      // FIXME: Replace with LLVM file API
+      std::ifstream ExternalFnMapFile(ExternalFunctionMap.c_str());
+      std::string FunctionName, FileName;
+      while (ExternalFnMapFile >> FunctionName >> FileName)
+        FunctionFileMap[FunctionName] = BuildDir + "/" + FileName;
+      ExternalFnMapFile.close();
+    }
+
+    FunctionFileMapping::iterator it = FunctionFileMap.find(MangledFnName);
+    if (it != FunctionFileMap.end())
+      ASTFileName = it->second;
+    else // No definition found even in some other build unit
+      return NULL;
+    FileASTUnitMapping::iterator ASTCacheEntry =
+        FileASTUnitMap.find(ASTFileName);
+    if (ASTCacheEntry == FileASTUnitMap.end()) {
+      FileSystemOptions FileSystemOpts;
+      IntrusiveRefCntPtr<DiagnosticsEngine> Diagnostics(&(CI.getDiagnostics()));
+      Unit =  ASTUnit::LoadFromASTFile(ASTFileName,CI.getPCHContainerOperations()->getRawReader(), Diagnostics,
+    		  FileSystemOpts).get();
+      llvm::errs()<<"loadfromast. haserroroccurred:"<<Unit->getDiagnostics().hasErrorOccurred()
+    		  <<"hasFatalerroroccurred:"<<
+      Unit->getDiagnostics().hasFatalErrorOccurred()
+	  <<"hasSourceManager:"<<
+      Unit->getDiagnostics().hasSourceManager();
+      FileASTUnitMap[ASTFileName] = Unit;
+      FunctionAstUnitMap[MangledFnName] = Unit;
+    } else {
+      Unit = ASTCacheEntry->second;
+      FunctionAstUnitMap[MangledFnName] = Unit;
+    }
+  } else {
+    Unit = FnUnitCacheEntry->second;
+  }
+
+  if (Unit) {
+	llvm::errs()<<"\nLoading AST file:"<<ASTFileName<<"p1:"<<&(Unit->getFileManager())<<"p2:"<<&(Unit->getASTContext().getSourceManager()
+                   .getFileManager())<<"\n";
+    //assert(&Unit->getFileManager() == &Unit->getASTContext().getSourceManager()
+    //       .getFileManager());
+    ASTImporter &Importer = getOrCreateASTImporter(Unit->getASTContext());
+    //Importer.setFromSema(&Unit->getSema());
+    //Importer.setToSema(S);
+    TranslationUnitDecl *TU = Unit->getASTContext().getTranslationUnitDecl();
+    llvm::errs()<<"dumping decl context:";
+    TU->dumpLookups(llvm::errs());
+    //Decl* d=TU->;
+    //llvm::errs()<<"dumping first decl:";
+    //d->dump(llvm::errs());
+    //llvm::errs<<"\n";
+    for (DeclContext::decl_iterator DI = TU->decls_begin(),
+      DEnd = TU->decls_end(); DI != DEnd; ++DI) {
+      FunctionDecl *ND = dyn_cast<FunctionDecl>(*DI);
+      // FIXME: Use ASTMatcher.
+      const FunctionDecl *ResultDecl;
+      if (ND && ND->hasBody(ResultDecl)) {
+        std::string LookupMangledName =
+            getMangledName(ResultDecl, MangleCtx.get());
+        // We are already sure that the triple is correct here
+        if (LookupMangledName == MangledFnName) {
+          // FIXME: Refactor const_cast
+          llvm::errs() << "Importing function " << MangledFnName << " from "
+                       << ASTFileName << "\n";
+          ResultDecl->dump();
+          llvm::errs() << "\n\n\n";
+          ResultDecl = cast<FunctionDecl>(Importer.Import(const_cast<FunctionDecl *>(ResultDecl)));
+          assert(ResultDecl->hasBody());
+          ImportMap[FD] = ResultDecl;
+          ResultDecl->dump();
+          llvm::errs() << "-----------------------------------------------\nImport succeed\n";
+          return ResultDecl;
+        }
+      }
+    }
+  }
+  return NULL;
+}
+
+ASTImporter &ASTContext::getOrCreateASTImporter(ASTContext &From) {
+  ASTUnitImporterMapping::iterator I = ASTUnitImporterMap.find(
+        From.getTranslationUnitDecl());
+  if (I != ASTUnitImporterMap.end())
+    return *I->second;
+  ASTImporter *NewImporter = new ASTImporter(
+        *this, getSourceManager().getFileManager(),
+        From, From.getSourceManager().getFileManager(), false);
+  ASTUnitImporterMap[From.getTranslationUnitDecl()] = NewImporter;
+  return *NewImporter;
+}
+
+
 
 CharUnits ASTContext::getDeclAlign(const Decl *D, bool ForAlignof) const {
   unsigned Align = Target->getCharWidth();
