@@ -33,6 +33,7 @@
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/SanitizerBlacklist.h"
 #include "clang/Basic/VersionTuple.h"
+#include "clang/Frontend/CompilerInstance.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
@@ -42,6 +43,8 @@
 #include "llvm/Support/Allocator.h"
 #include <memory>
 #include <vector>
+
+
 
 namespace llvm {
   struct fltSemantics;
@@ -55,6 +58,9 @@ namespace clang {
   class CharUnits;
   class DiagnosticsEngine;
   class Expr;
+  class ExternalASTSource;
+  class ASTImporter;
+  class ASTUnit;
   class ASTMutationListener;
   class IdentifierTable;
   class MaterializeTemporaryExpr;
@@ -66,6 +72,7 @@ namespace clang {
   class MangleContext;
   class ObjCIvarDecl;
   class ObjCPropertyDecl;
+  class Sema;
   class UnresolvedSetIterator;
   class UsingDecl;
   class UsingShadowDecl;
@@ -1840,6 +1847,28 @@ public:
   static bool isObjCNSObjectType(QualType Ty) {
     return Ty->isObjCNSObjectType();
   }
+
+  //===--------------------------------------------------------------------===//
+  //                         Cross-translation unit support
+  //===--------------------------------------------------------------------===//
+private:
+  typedef std::map<std::string, std::string> FunctionFileMapping;
+  typedef std::map<std::string, clang::ASTUnit *> FunctionAstUnitMapping;
+  typedef std::map<std::string, clang::ASTUnit *> FileASTUnitMapping;
+  typedef std::map<TranslationUnitDecl *, ASTImporter *> ASTUnitImporterMapping;
+  typedef std::map<const FunctionDecl *, const FunctionDecl *> ImportMapping;
+  FileASTUnitMapping FileASTUnitMap;
+  FunctionAstUnitMapping FunctionAstUnitMap;
+  FunctionFileMapping FunctionFileMap;
+  ASTUnitImporterMapping ASTUnitImporterMap;
+  ImportMapping ImportMap;
+  ASTImporter &getOrCreateASTImporter(ASTContext &From);
+
+public:
+  const FunctionDecl *getXTUDefinition(const FunctionDecl *FD,
+		  CompilerInstance &CI,
+		  clang::Sema *S = NULL);
+
 
   //===--------------------------------------------------------------------===//
   //                         Type Sizing and Analysis

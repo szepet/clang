@@ -42,6 +42,7 @@ for f in files:
     except OSError:
         pass
 
+print(' '.join(args + call_args ))
 rets = [system(' '.join(args + call_args + [f, "-o", get_ast_path(f) ])) for f in files]
 ret = 0
 if len(filter(lambda x: x != 0, rets)) != 0 :
