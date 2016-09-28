@@ -1478,14 +1478,15 @@ const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,Compiler
   TextDiagnosticPrinter *DiagClient =
     new TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
-  DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagClient);
-  std::unique_ptr<MangleContext> MangleCtx(ItaniumMangleContext::create(
-        FD->getASTContext(), Diags));
+  IntrusiveRefCntPtr<DiagnosticsEngine> Diags(
+      new DiagnosticsEngine(DiagID, &*DiagOpts, DiagClient));
+  std::unique_ptr<MangleContext> MangleCtx(
+      ItaniumMangleContext::create(FD->getASTContext(), *Diags));
   MangleCtx->setShouldForceMangleProto(true);
   std::string MangledFnName = getMangledName(FD, MangleCtx.get());
   std::string BuildDir = getBuildDir();
   std::string ExternalFunctionMap = BuildDir + "/externalFnMap.txt";
-  ASTUnit *Unit = NULL;
+  ASTUnit *Unit = nullptr;
 
   FunctionAstUnitMapping::const_iterator FnUnitCacheEntry =
       FunctionAstUnitMap.find(MangledFnName);
@@ -1503,19 +1504,14 @@ const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,Compiler
     if (it != FunctionFileMap.end())
       ASTFileName = it->second;
     else // No definition found even in some other build unit
-      return NULL;
+      return nullptr;
     FileASTUnitMapping::iterator ASTCacheEntry =
         FileASTUnitMap.find(ASTFileName);
     if (ASTCacheEntry == FileASTUnitMap.end()) {
-      FileSystemOptions FileSystemOpts;
-      IntrusiveRefCntPtr<DiagnosticsEngine> Diagnostics(&(CI.getDiagnostics()));
-      Unit =  ASTUnit::LoadFromASTFile(ASTFileName,CI.getPCHContainerOperations()->getRawReader(), Diagnostics,
-    		  FileSystemOpts).get();
-      llvm::errs()<<"loadfromast. haserroroccurred:"<<Unit->getDiagnostics().hasErrorOccurred()
-    		  <<"hasFatalerroroccurred:"<<
-      Unit->getDiagnostics().hasFatalErrorOccurred()
-	  <<"hasSourceManager:"<<
-      Unit->getDiagnostics().hasSourceManager();
+      Unit = ASTUnit::LoadFromASTFile(
+                 ASTFileName, CI.getPCHContainerOperations()->getRawReader(),
+                 Diags, CI.getFileSystemOpts())
+                 .release();
       FileASTUnitMap[ASTFileName] = Unit;
       FunctionAstUnitMap[MangledFnName] = Unit;
     } else {
@@ -1527,23 +1523,14 @@ const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,Compiler
   }
 
   if (Unit) {
-	llvm::errs()<<"\nLoading AST file:"<<ASTFileName<<"p1:"<<&(Unit->getFileManager())<<"p2:"<<&(Unit->getASTContext().getSourceManager()
-                   .getFileManager())<<"\n";
-    //assert(&Unit->getFileManager() == &Unit->getASTContext().getSourceManager()
-    //       .getFileManager());
+    assert(&Unit->getFileManager() ==
+           &Unit->getASTContext().getSourceManager().getFileManager());
     ASTImporter &Importer = getOrCreateASTImporter(Unit->getASTContext());
     //Importer.setFromSema(&Unit->getSema());
     //Importer.setToSema(S);
     TranslationUnitDecl *TU = Unit->getASTContext().getTranslationUnitDecl();
-    llvm::errs()<<"dumping decl context:";
-    TU->dumpLookups(llvm::errs());
-    //Decl* d=TU->;
-    //llvm::errs()<<"dumping first decl:";
-    //d->dump(llvm::errs());
-    //llvm::errs<<"\n";
-    for (DeclContext::decl_iterator DI = TU->decls_begin(),
-      DEnd = TU->decls_end(); DI != DEnd; ++DI) {
-      FunctionDecl *ND = dyn_cast<FunctionDecl>(*DI);
+    for (Decl* D : TU->decls()) {
+      FunctionDecl *ND = dyn_cast<FunctionDecl>(D);
       // FIXME: Use ASTMatcher.
       const FunctionDecl *ResultDecl;
       if (ND && ND->hasBody(ResultDecl)) {
@@ -1566,7 +1553,7 @@ const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,Compiler
       }
     }
   }
-  return NULL;
+  return nullptr;
 }
 
 ASTImporter &ASTContext::getOrCreateASTImporter(ASTContext &From) {
