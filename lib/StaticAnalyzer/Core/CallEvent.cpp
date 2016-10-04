@@ -375,6 +375,8 @@ RuntimeDefinition AnyFunctionCall::getRuntimeDefinition() const {
       ->getCompilerInstance().getSema();
   const FunctionDecl *XTUDecl = FD->getXTUDefinition(((ExprEngine *)getState()->getStateManager().getOwningEngine())
 	      ->getCompilerInstance(),&S);
+  llvm::errs()<<"AnyFunctionCall::getRuntimeDefinition:";
+  XTUDecl->dump();
   return RuntimeDefinition(XTUDecl);
 }
 

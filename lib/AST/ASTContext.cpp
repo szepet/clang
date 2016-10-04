@@ -1522,10 +1522,16 @@ const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,Compiler
     Unit = FnUnitCacheEntry->second;
   }
 
+
   if (Unit) {
     assert(&Unit->getFileManager() ==
            &Unit->getASTContext().getSourceManager().getFileManager());
     ASTImporter &Importer = getOrCreateASTImporter(Unit->getASTContext());
+    //ASTImporter Importer(CI.getASTContext(),
+    //                         CI.getFileManager(),
+    //                         Unit->getASTContext(),
+    //                         Unit->getFileManager(),
+    //                         /*MinimalImport=*/false);
     //Importer.setFromSema(&Unit->getSema());
     //Importer.setToSema(S);
     TranslationUnitDecl *TU = Unit->getASTContext().getTranslationUnitDecl();
@@ -1541,14 +1547,18 @@ const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,Compiler
           // FIXME: Refactor const_cast
           llvm::errs() << "Importing function " << MangledFnName << " from "
                        << ASTFileName << "\n";
-          ResultDecl->dump();
-          llvm::errs() << "\n\n\n";
-          ResultDecl = cast<FunctionDecl>(Importer.Import(const_cast<FunctionDecl *>(ResultDecl)));
-          assert(ResultDecl->hasBody());
-          ImportMap[FD] = ResultDecl;
-          ResultDecl->dump();
+          //ResultDecl->dump();
+          //llvm::errs() << "\n\n\n";
+          //ResultDecl = cast<FunctionDecl>(Importer.Import(const_cast<FunctionDecl *>(ResultDecl)));
+          FunctionDecl *toDecl;
+          toDecl = cast<FunctionDecl> (Importer.Import(const_cast<FunctionDecl *>(ResultDecl)));
+          //llvm::errs() << "after import\n\n\n";
+          //toDecl->dump();
+          assert(toDecl->hasBody());
+          ImportMap[FD] = toDecl;
+          toDecl->dump();
           llvm::errs() << "-----------------------------------------------\nImport succeed\n";
-          return ResultDecl;
+          return toDecl;
         }
       }
     }
