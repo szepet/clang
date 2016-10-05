@@ -212,9 +212,9 @@ MapFunctionNamesConsumer::~MapFunctionNamesConsumer() {
 }
 
 void MapFunctionNamesConsumer::WalkAST::VisitChildren(const Stmt *S) {
-  for (const Stmt *S : S->children())
-    if (S)
-      Visit(S);
+  for (const Stmt *CS : S->children())
+    if (CS)
+      Visit(CS);
 }
 
 void MapFunctionNamesConsumer::WalkAST::VisitCallExpr(const CallExpr *CE) {
