@@ -203,8 +203,8 @@ MapFunctionNamesConsumer::~MapFunctionNamesConsumer() {
   std::stringstream CFGStr;
   for (auto &Entry : CG) {
     CFGStr << CurrentFileName << Triple << "::" << Entry.getKey().data();
-    for (auto &Entry : Entry.getValue())
-      CFGStr << ' ' << Entry.getKey().data();
+    for (auto &E : Entry.getValue())
+      CFGStr << ' ' << E.getKey().data();
     CFGStr << '\n';
   }
 
