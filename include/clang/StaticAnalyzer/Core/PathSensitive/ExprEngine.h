@@ -100,10 +100,8 @@ private:
   InliningModes HowToInline;
 
 public:
-  ExprEngine(CompilerInstance &CI,
-    			AnalysisManager &mgr, bool gcEnabled,
-             SetOfConstDecls *VisitedCalleesIn,
-             FunctionSummariesTy *FS,
+  ExprEngine(CompilerInstance &CI, AnalysisManager &mgr, bool gcEnabled,
+             SetOfConstDecls *VisitedCalleesIn, FunctionSummariesTy *FS,
              InliningModes HowToInlineIn);
 
   ~ExprEngine() override;

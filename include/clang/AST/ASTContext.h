@@ -72,7 +72,6 @@ namespace clang {
   class MangleContext;
   class ObjCIvarDecl;
   class ObjCPropertyDecl;
-  class Sema;
   class UnresolvedSetIterator;
   class UsingDecl;
   class UsingShadowDecl;
@@ -1852,9 +1851,9 @@ public:
   //                         Cross-translation unit support
   //===--------------------------------------------------------------------===//
 private:
-  typedef std::map<std::string, std::string> FunctionFileMapping;
-  typedef std::map<std::string, clang::ASTUnit *> FunctionAstUnitMapping;
-  typedef std::map<std::string, clang::ASTUnit *> FileASTUnitMapping;
+  typedef llvm::StringMap<std::string> FunctionFileMapping;
+  typedef llvm::StringMap<clang::ASTUnit *> FunctionAstUnitMapping;
+  typedef llvm::StringMap<clang::ASTUnit *> FileASTUnitMapping;
   typedef std::map<TranslationUnitDecl *, ASTImporter *> ASTUnitImporterMapping;
   typedef std::map<const FunctionDecl *, const FunctionDecl *> ImportMapping;
   FileASTUnitMapping FileASTUnitMap;
@@ -1866,9 +1865,7 @@ private:
 
 public:
   const FunctionDecl *getXTUDefinition(const FunctionDecl *FD,
-		  CompilerInstance &CI,
-		  clang::Sema *S = NULL);
-
+                                       CompilerInstance &CI);
 
   //===--------------------------------------------------------------------===//
   //                         Type Sizing and Analysis

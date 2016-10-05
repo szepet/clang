@@ -163,9 +163,9 @@ private:
   void Release() const;
 
 protected:
-  typedef std::map<std::string, std::string> FunctionFileMapping;
-  typedef std::map<std::string, clang::ASTUnit*> FunctionAstUnitMapping;
-  typedef std::map<std::string, clang::ASTUnit*> FileASTUnitMapping;
+  typedef llvm::StringMap<std::string> FunctionFileMapping;
+  typedef llvm::StringMap<clang::ASTUnit*> FunctionAstUnitMapping;
+  typedef llvm::StringMap<clang::ASTUnit*> FileASTUnitMapping;
 
   friend class CallEventManager;
 
