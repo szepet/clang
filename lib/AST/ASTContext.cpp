@@ -1448,10 +1448,10 @@ const char *getExplicitBuildDir() {
 std::string getMangledName(const NamedDecl *ND, MangleContext *MangleCtx) {
   std::string MangledName;
   llvm::raw_string_ostream OS(MangledName);
-  if (const CXXConstructorDecl *CCD = dyn_cast<CXXConstructorDecl>(ND))
+  if (const auto *CCD = dyn_cast<CXXConstructorDecl>(ND))
     // FIXME: Use correct Ctor/DtorType
     MangleCtx->mangleCXXCtor(CCD, Ctor_Complete, OS);
-  else if (const CXXDestructorDecl *CDD = dyn_cast<CXXDestructorDecl>(ND))
+  else if (const auto *CDD = dyn_cast<CXXDestructorDecl>(ND))
     MangleCtx->mangleCXXDtor(CDD, Dtor_Complete, OS);
   else
     MangleCtx->mangleName(ND, OS);
@@ -1465,19 +1465,18 @@ std::string getMangledName(const NamedDecl *ND, MangleContext *MangleCtx) {
   return OS.str();
 }
 
-const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,CompilerInstance &CI,
-                                                 Sema *S) {
+const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,
+                                                 CompilerInstance &CI) {
   assert(!FD->hasBody() && "FD has a definition in current translation unit!");
   if (!FD->getType()->getAs<FunctionProtoType>())
-    return NULL; // cannot even mangle that
+    return nullptr; // Cannot even mangle that.
   ImportMapping::const_iterator FoundImport = ImportMap.find(FD);
   if (FoundImport != ImportMap.end())
     return FoundImport->second;
 
-  std::string ASTFileName;
   IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts = new DiagnosticOptions();
   TextDiagnosticPrinter *DiagClient =
-    new TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
+      new TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
   IntrusiveRefCntPtr<DiagnosticsEngine> Diags(
       new DiagnosticsEngine(DiagID, &*DiagOpts, DiagClient));
@@ -1488,13 +1487,14 @@ const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,Compiler
   std::string BuildDir = getBuildDir();
   std::string ExternalFunctionMap = BuildDir + "/externalFnMap.txt";
   ASTUnit *Unit = nullptr;
+  std::string ASTFileName;
 
   FunctionAstUnitMapping::const_iterator FnUnitCacheEntry =
       FunctionAstUnitMap.find(MangledFnName);
   if (FnUnitCacheEntry == FunctionAstUnitMap.end()) {
     if (FunctionFileMap.empty()) {
-      // FIXME: Replace with LLVM file API
-      std::ifstream ExternalFnMapFile(ExternalFunctionMap.c_str());
+      // FIXME: Replace with LLVM file API.
+      std::ifstream ExternalFnMapFile(ExternalFunctionMap);
       std::string FunctionName, FileName;
       while (ExternalFnMapFile >> FunctionName >> FileName)
         FunctionFileMap[FunctionName] = BuildDir + "/" + FileName;
@@ -1504,7 +1504,7 @@ const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,Compiler
     FunctionFileMapping::iterator it = FunctionFileMap.find(MangledFnName);
     if (it != FunctionFileMap.end())
       ASTFileName = it->second;
-    else // No definition found even in some other build unit
+    else // No definition found even in some other build unit.
       return nullptr;
     FileASTUnitMapping::iterator ASTCacheEntry =
         FileASTUnitMap.find(ASTFileName);
@@ -1523,46 +1523,31 @@ const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,Compiler
     Unit = FnUnitCacheEntry->second;
   }
 
+  if (!Unit)
+    return nullptr;
 
-  if (Unit) {
-    assert(&Unit->getFileManager() ==
-           &Unit->getASTContext().getSourceManager().getFileManager());
-    ASTImporter &Importer = getOrCreateASTImporter(Unit->getASTContext());
-    //ASTImporter Importer(CI.getASTContext(),
-    //                         CI.getFileManager(),
-    //                         Unit->getASTContext(),
-    //                         Unit->getFileManager(),
-    //                         /*MinimalImport=*/false);
-    //Importer.setFromSema(&Unit->getSema());
-    //Importer.setToSema(S);
-    TranslationUnitDecl *TU = Unit->getASTContext().getTranslationUnitDecl();
-    for (Decl* D : TU->decls()) {
-      FunctionDecl *ND = dyn_cast<FunctionDecl>(D);
-      // FIXME: Use ASTMatcher.
-      const FunctionDecl *ResultDecl;
-      if (ND && ND->hasBody(ResultDecl)) {
-        std::string LookupMangledName =
-            getMangledName(ResultDecl, MangleCtx.get());
-        // We are already sure that the triple is correct here
-        if (LookupMangledName == MangledFnName) {
-          // FIXME: Refactor const_cast
-          llvm::errs() << "Importing function " << MangledFnName << " from "
-                       << ASTFileName << "\n";
-          //ResultDecl->dump();
-          //llvm::errs() << "\n\n\n";
-          //ResultDecl = cast<FunctionDecl>(Importer.Import(const_cast<FunctionDecl *>(ResultDecl)));
-          FunctionDecl *toDecl;
-          toDecl = cast<FunctionDecl> (Importer.Import(const_cast<FunctionDecl *>(ResultDecl)));
-          //llvm::errs() << "after import\n\n\n";
-          //toDecl->dump();
-          assert(toDecl->hasBody());
-          ImportMap[FD] = toDecl;
-          toDecl->dump();
-          llvm::errs() << "-----------------------------------------------\nImport succeed\n";
-          return toDecl;
-        }
-      }
-    }
+  assert(&Unit->getFileManager() ==
+         &Unit->getASTContext().getSourceManager().getFileManager());
+  ASTImporter &Importer = getOrCreateASTImporter(Unit->getASTContext());
+  TranslationUnitDecl *TU = Unit->getASTContext().getTranslationUnitDecl();
+  for (Decl *D : TU->decls()) {
+    auto *ND = dyn_cast<FunctionDecl>(D);
+    // FIXME: Use ASTMatcher.
+    const FunctionDecl *ResultDecl;
+    if (!ND || !ND->hasBody(ResultDecl))
+      continue;
+    std::string LookupMangledName = getMangledName(ResultDecl, MangleCtx.get());
+    // We are already sure that the triple is correct here.
+    if (LookupMangledName != MangledFnName)
+      continue;
+    llvm::errs() << "Importing function " << MangledFnName << " from "
+                 << ASTFileName << "\n";
+    // FIXME: Refactor const_cast
+    auto *ToDecl = cast<FunctionDecl>(
+        Importer.Import(const_cast<FunctionDecl *>(ResultDecl)));
+    assert(ToDecl->hasBody());
+    ImportMap[FD] = ToDecl;
+    return ToDecl;
   }
   return nullptr;
 }

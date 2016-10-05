@@ -370,13 +370,9 @@ RuntimeDefinition AnyFunctionCall::getRuntimeDefinition() const {
   if (AD->getBody())
     return RuntimeDefinition(AD->getDecl());
 
-  // Inter-unit?
-  Sema &S = ((ExprEngine *)getState()->getStateManager().getOwningEngine())
-      ->getCompilerInstance().getSema();
-  const FunctionDecl *XTUDecl = FD->getXTUDefinition(((ExprEngine *)getState()->getStateManager().getOwningEngine())
-	      ->getCompilerInstance(),&S);
-  llvm::errs()<<"AnyFunctionCall::getRuntimeDefinition:";
-  XTUDecl->dump();
+  const FunctionDecl *XTUDecl = FD->getXTUDefinition(
+      ((ExprEngine *)getState()->getStateManager().getOwningEngine())
+          ->getCompilerInstance());
   return RuntimeDefinition(XTUDecl);
 }
 

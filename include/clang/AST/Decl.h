@@ -51,7 +51,6 @@ class TypeAliasTemplateDecl;
 class TypeLoc;
 class UnresolvedSetImpl;
 class VarTemplateDecl;
-class Sema;
 class CompilerInstance;
 
 /// \brief A container of type source information.
@@ -1829,9 +1828,7 @@ public:
     return getBody(Definition);
   }
 
-
-  const FunctionDecl *getXTUDefinition(CompilerInstance &CI, Sema *S = NULL) const;
-
+  const FunctionDecl *getXTUDefinition(CompilerInstance &CI) const;
 
   /// isThisDeclarationADefinition - Returns whether this specific
   /// declaration of the function is also a definition. This does not

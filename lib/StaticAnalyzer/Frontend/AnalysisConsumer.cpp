@@ -200,12 +200,12 @@ public:
   /// translation unit.
   FunctionSummariesTy FunctionSummaries;
 
-  AnalysisConsumer(CompilerInstance &CI,const Preprocessor &pp, const std::string &outdir,
-                   AnalyzerOptionsRef opts, ArrayRef<std::string> plugins,
-                   CodeInjector *injector)
+  AnalysisConsumer(CompilerInstance &CI, const Preprocessor &pp,
+                   const std::string &outdir, AnalyzerOptionsRef opts,
+                   ArrayRef<std::string> plugins, CodeInjector *injector)
       : RecVisitorMode(0), RecVisitorBR(nullptr), Ctx(nullptr), PP(pp),
         OutDir(outdir), Opts(std::move(opts)), Plugins(plugins),
-        Injector(injector),CI(CI) {
+        Injector(injector), CI(CI) {
     DigestAnalyzerOptions();
     if (Opts->PrintStats) {
       llvm::EnableStatistics(false);
@@ -428,19 +428,19 @@ extern std::string getMangledName(const NamedDecl *ND,
 extern char *getExplicitBuildDir();
 
 void lockedWrite(const std::string &fileName, const std::string &content) {
-  if (!content.empty()) {
-    int fd = open(fileName.c_str(), O_CREAT|O_WRONLY|O_APPEND, 0777);
-    flock(fd, LOCK_EX);
-    write(fd, content.c_str(), content.length());
-    flock(fd, LOCK_UN);
-    close(fd);
-  }
+  if (content.empty()) 
+    return;
+  int fd = open(fileName.c_str(), O_CREAT|O_WRONLY|O_APPEND, 0777);
+  flock(fd, LOCK_EX);
+  write(fd, content.c_str(), content.length());
+  flock(fd, LOCK_UN);
+  close(fd);
 }
 
 static bool shouldSkipFunction(const Decl *D,
                                const SetOfConstDecls &Visited,
                                const SetOfConstDecls &VisitedAsTopLevel,
-                               std::set<std::string> &VisitedAsXTU,
+                               llvm::StringSet<> &VisitedAsXTU,
                                MangleContext *MangleCtx,
                                const std::string &Triple) {
   if (VisitedAsTopLevel.count(D))
@@ -462,30 +462,25 @@ static bool shouldSkipFunction(const Decl *D,
   if (const auto *MD = dyn_cast<CXXMethodDecl>(D)) {
     if (MD->isCopyAssignmentOperator() || MD->isMoveAssignmentOperator())
       return false;
-	  }
-	/*
-	  // Otherwise, if we visited the function before, do not reanalyze it.
-	  return Visited.count(D);
-	*/
-	// Otherwise, if we visited the function before, do not reanalyze it.
-    //XTU
-	  const FunctionDecl *FD = dyn_cast<FunctionDecl>(D);
-	  if (Visited.count(D)) {
-		//if (Opts->getIPAMode() == IPAK_Summary)
-		//  return true; // Functions analyzed in summary are analyzed completely
-		if (D->getAccess() == AS_private)
-		  return true;
-		if (FD && !FD->hasExternalFormalLinkage())
-		  return true;
-	  }
+  }
+  // Otherwise, if we visited the function before, do not reanalyze it.
+  const FunctionDecl *FD = dyn_cast<FunctionDecl>(D);
+  if (Visited.count(D)) {
+    // if (Opts->getIPAMode() == IPAK_Summary)
+    //  return true; // Functions analyzed in summary are analyzed
+    //  completely
+    if (D->getAccess() == AS_private)
+      return true;
+    if (FD && !FD->hasExternalFormalLinkage())
+      return true;
+  }
 
-	  if (FD) {
-		std::string MangledFnName =
-		    getMangledName(FD, MangleCtx) + "@" + Triple;
-		if (VisitedAsXTU.count(MangledFnName))
-		  return true;
-	  }
-	return false;
+  if (FD) {
+    std::string MangledFnName = getMangledName(FD, MangleCtx) + "@" + Triple;
+    if (VisitedAsXTU.count(MangledFnName))
+      return true;
+  }
+  return false;
 }
 
 ExprEngine::InliningModes
@@ -537,7 +532,7 @@ void AnalysisConsumer::HandleDeclsCallGraph(const unsigned LocalTUDeclsSize) {
   //visitedFunc.txt collects all functions that were
   //inlinded as callee or top level caller
   //these functions will not be visited as top level nodes
-  std::set<std::string> VisitedAsXTU;
+  llvm::StringSet<> VisitedAsXTU;
   std::string VisitedFuncSetFile;
   const char *BuildDir = getExplicitBuildDir();
   if (BuildDir) {
@@ -590,33 +585,28 @@ void AnalysisConsumer::HandleDeclsCallGraph(const unsigned LocalTUDeclsSize) {
   //XTU
   if (BuildDir) {
     clock_t t1 = clock();
-    std::set<std::string> NewVisited;
+    llvm::StringSet<> NewVisited;
 
     // FIXME: Unify these loops
-    for (SetOfConstDecls::iterator i = Visited.begin(), e = Visited.end();
-         i != e; ++i) {
+    for (const Decl *D : Visited) {
       std::string MN =
-          getMangledName(dyn_cast_or_null<FunctionDecl>(*i), MangleCtx.get()) +
+          getMangledName(dyn_cast_or_null<FunctionDecl>(D), MangleCtx.get()) +
           '@' + Triple;
       if (!VisitedAsXTU.count(MN))
         NewVisited.insert(MN);
     }
 
-    for (SetOfConstDecls::iterator i = VisitedAsTopLevel.begin(),
-                                   e = VisitedAsTopLevel.end();
-         i != e; ++i) {
+    for (const Decl *D : VisitedAsTopLevel) {
       std::string MN =
-          getMangledName(dyn_cast_or_null<FunctionDecl>(*i), MangleCtx.get()) +
+          getMangledName(dyn_cast_or_null<FunctionDecl>(D), MangleCtx.get()) +
           '@' + Triple;
       if (!VisitedAsXTU.count(MN))
         NewVisited.insert(MN);
     }
 
     std::string NewVisitedString;
-    for (std::set<std::string>::const_iterator i = NewVisited.begin(),
-                                               e = NewVisited.end();
-         i != e; ++i)
-      NewVisitedString += (*i) + "\n";
+    for (auto &Entry : NewVisited)
+      NewVisitedString += (Entry.getKey() + "\n").str();
     lockedWrite(VisitedFuncSetFile, NewVisitedString);
     clock_t t2 = clock();
     llvm::errs() << "! Writing " << VisitedFuncSetFile << " took "
@@ -823,7 +813,8 @@ void AnalysisConsumer::ActionExprEngine(Decl *D, bool ObjCGCEnabled,
   if (!Mgr->getAnalysisDeclContext(D)->getAnalysis<RelaxedLiveVariables>())
     return;
 
-  ExprEngine Eng(CI,*Mgr, ObjCGCEnabled, VisitedCallees, &FunctionSummaries,IMode);
+  ExprEngine Eng(CI, *Mgr, ObjCGCEnabled, VisitedCallees, &FunctionSummaries,
+                 IMode);
 
   // Set the graph auditor.
   std::unique_ptr<ExplodedNode::Auditor> Auditor;
@@ -835,22 +826,23 @@ void AnalysisConsumer::ActionExprEngine(Decl *D, bool ObjCGCEnabled,
   // Execute the worklist algorithm.
   Eng.ExecuteWorkList(Mgr->getAnalysisDeclContextManager().getStackFrame(D),
                       Mgr->options.getMaxNodesPerTopLevelFunction());
-	if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
-		IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts = new DiagnosticOptions();
-		IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
-		TextDiagnosticPrinter *DiagClient =
-		    new TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
-		DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagClient);
-		std::unique_ptr<MangleContext> MangleCtx(
-		    ItaniumMangleContext::create(*Ctx, Diags));
-		MangleCtx->setShouldForceMangleProto(true);
-		llvm::errs() << getMangledName(FD, MangleCtx.get()) << " " <<
-		                (Eng.hasEmptyWorkList()
-		                        ? "empty" : "has_work") << "_wl " <<
-		      (Eng.wasBlocksExhausted() ? "block_exhausted" : "not_exhausted") <<
-		                " " << (Eng.getCoreEngine().wasBlockAborted()
-		                        ? "has" : "no") << "_block_aborted\n";
-	}
+  if (const auto *FD = dyn_cast<FunctionDecl>(D)) {
+    IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts = new DiagnosticOptions();
+    IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+    TextDiagnosticPrinter *DiagClient =
+        new TextDiagnosticPrinter(llvm::errs(), &*DiagOpts);
+    DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagClient);
+    std::unique_ptr<MangleContext> MangleCtx(
+        ItaniumMangleContext::create(*Ctx, Diags));
+    MangleCtx->setShouldForceMangleProto(true);
+    llvm::errs() << getMangledName(FD, MangleCtx.get()) << " "
+                 << (Eng.hasEmptyWorkList() ? "empty" : "has_work") << "_wl "
+                 << (Eng.wasBlocksExhausted() ? "block_exhausted"
+                                              : "not_exhausted")
+                 << " "
+                 << (Eng.getCoreEngine().wasBlockAborted() ? "has" : "no")
+                 << "_block_aborted\n";
+  }
   // Release the auditor (if any) so that it doesn't monitor the graph
   // created BugReporter.
   ExplodedNode::SetAuditor(nullptr);
@@ -895,8 +887,8 @@ ento::CreateAnalysisConsumer(CompilerInstance &CI) {
   AnalyzerOptionsRef analyzerOpts = CI.getAnalyzerOpts();
   bool hasModelPath = analyzerOpts->Config.count("model-path") > 0;
 
-  return llvm::make_unique<AnalysisConsumer>(CI,
-      CI.getPreprocessor(), CI.getFrontendOpts().OutputFile, analyzerOpts,
+  return llvm::make_unique<AnalysisConsumer>(
+      CI, CI.getPreprocessor(), CI.getFrontendOpts().OutputFile, analyzerOpts,
       CI.getFrontendOpts().Plugins,
       hasModelPath ? new ModelInjector(CI) : nullptr);
 }

@@ -6720,7 +6720,6 @@ Decl *ASTImporter::Import(Decl *FromD) {
   if (Pos != ImportedDecls.end()) {
     Decl *ToD = Pos->second;
     Importer.ImportDefinitionIfNeeded(FromD, ToD);
-    llvm::errs()<<"ASTImporter::Import Declaration already found\n";
     return ToD;
   }
   

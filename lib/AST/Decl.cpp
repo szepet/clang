@@ -2555,10 +2555,9 @@ Stmt *FunctionDecl::getBody(const FunctionDecl *&Definition) const {
   return nullptr;
 }
 
-const FunctionDecl *FunctionDecl::getXTUDefinition(CompilerInstance &CI,Sema *S) const {
-  return getASTContext().getXTUDefinition(this,CI, S);
+const FunctionDecl *FunctionDecl::getXTUDefinition(CompilerInstance &CI) const {
+  return getASTContext().getXTUDefinition(this, CI);
 }
-
 
 void FunctionDecl::setBody(Stmt *B) {
   Body = B;

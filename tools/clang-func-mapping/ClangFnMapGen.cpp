@@ -29,8 +29,6 @@
 #include <fstream>
 #include <iostream>
 #include <limits.h>
-#include <map>
-#include <set>
 #include <sstream>
 #include <string>
 #include <sys/file.h>
@@ -41,21 +39,21 @@ using namespace llvm;
 using namespace clang;
 using namespace clang::tooling;
 
-typedef std::set<std::string> StrSet;
-typedef std::map<std::string, StrSet> CallGraph;
+typedef StringSet<> StrSet;
+typedef StringMap<StrSet> CallGraph;
 
 static cl::OptionCategory ClangFnMapGenCategory("clang-fnmapgen options");
 
 // Utility Functions to get the temporary directory
 static const char *getTmpDir(void) {
   char *tmpdir;
-  if ((tmpdir = getenv("OUT_DIR")) != NULL)
+  if ((tmpdir = getenv("OUT_DIR")) != nullptr)
     return tmpdir;
-  if ((tmpdir = getenv("TEMP")) != NULL)
+  if ((tmpdir = getenv("TEMP")) != nullptr)
     return tmpdir;
-  if ((tmpdir = getenv("TMP")) != NULL)
+  if ((tmpdir = getenv("TMP")) != nullptr)
     return tmpdir;
-  if ((tmpdir = getenv("TMPDIR")) != NULL)
+  if ((tmpdir = getenv("TMPDIR")) != nullptr)
     return tmpdir;
   return "/tmp";
 }
@@ -73,10 +71,10 @@ static void lockedWrite(const std::string &fileName,
 
 static std::string getTripleSuffix(ASTContext &Ctx) {
   // We are not going to support vendor and don't support OS and environment.
-  // FIXME: support OS and environment correctly
-  llvm::Triple::ArchType T = Ctx.getTargetInfo().getTriple().getArch();
-  if (T == llvm::Triple::thumb)
-    T = llvm::Triple::arm;
+  // FIXME: support OS and environment correctly.
+  Triple::ArchType T = Ctx.getTargetInfo().getTriple().getArch();
+  if (T == Triple::thumb)
+    T = Triple::arm;
   return Ctx.getTargetInfo().getTriple().getArchTypeName(T);
 }
 
@@ -133,7 +131,7 @@ std::string MapFunctionNamesConsumer::getMangledName(const FunctionDecl *FD,
   std::string MangledName;
   llvm::raw_string_ostream os(MangledName);
   if (const CXXConstructorDecl *CCD = dyn_cast<CXXConstructorDecl>(FD))
-    // FIXME: Use correct Ctor/DtorType
+    // FIXME: Use correct Ctor/DtorType.
     Ctx->mangleCXXCtor(CCD, Ctor_Complete, os);
   else if (const CXXDestructorDecl *CDD = dyn_cast<CXXDestructorDecl>(FD))
     Ctx->mangleCXXDtor(CDD, Dtor_Complete, os);
@@ -147,14 +145,14 @@ void MapFunctionNamesConsumer::handleDecl(const Decl *D) {
   if (!D)
     return;
 
-  if (const FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
+  if (const auto *FD = dyn_cast<FunctionDecl>(D)) {
     if (const Stmt *Body = FD->getBody()) {
       std::string MangledName = getMangledName(FD);
       const SourceManager &SM = Ctx.getSourceManager();
       if (CurrentFileName.empty()) {
         const char *SMgrName =
             SM.getFileEntryForID(SM.getMainFileID())->getName();
-        char *Path = realpath(SMgrName, NULL);
+        char *Path = realpath(SMgrName, nullptr);
         CurrentFileName = Path;
         free(Path);
       }
@@ -182,10 +180,9 @@ void MapFunctionNamesConsumer::handleDecl(const Decl *D) {
     }
   }
 
-  if (const DeclContext *DC = dyn_cast<DeclContext>(D))
-    for (DeclContext::decl_iterator I = DC->decls_begin(), E = DC->decls_end();
-         I != E; ++I)
-      handleDecl(*I);
+  if (const auto *DC = dyn_cast<DeclContext>(D))
+    for (const Decl *D : DC->decls())
+      handleDecl(D);
 }
 
 bool MapFunctionNamesConsumer::isCLibraryFunction(const FunctionDecl *FD) {
@@ -199,16 +196,15 @@ bool MapFunctionNamesConsumer::isCLibraryFunction(const FunctionDecl *FD) {
 }
 
 MapFunctionNamesConsumer::~MapFunctionNamesConsumer() {
-  // flush results to files
+  // Flush results to files.
   std::string BuildDir = getTmpDir();
   lockedWrite(BuildDir + "/externalFns.txt", ExternFuncStr.str());
   lockedWrite(BuildDir + "/definedFns.txt", DefinedFuncsStr.str());
   std::stringstream CFGStr;
-  for (CallGraph::const_iterator I = CG.begin(), E = CG.end(); I != E; I++) {
-    CFGStr << CurrentFileName << Triple << "::" << I->first;
-    for (StrSet::const_iterator IS = I->second.begin(), ES = I->second.end();
-         IS != ES; IS++)
-      CFGStr << ' ' << *IS;
+  for (auto &Entry : CG) {
+    CFGStr << CurrentFileName << Triple << "::" << Entry.getKey().data();
+    for (auto &Entry : Entry.getValue())
+      CFGStr << ' ' << Entry.getKey().data();
     CFGStr << '\n';
   }
 
@@ -216,14 +212,13 @@ MapFunctionNamesConsumer::~MapFunctionNamesConsumer() {
 }
 
 void MapFunctionNamesConsumer::WalkAST::VisitChildren(const Stmt *S) {
-  for (Stmt::const_child_iterator I = S->child_begin(), E = S->child_end();
-       I != E; ++I)
-    if (*I)
-      Visit(*I);
+  for (const Stmt *S : S->children())
+    if (S)
+      Visit(S);
 }
 
 void MapFunctionNamesConsumer::WalkAST::VisitCallExpr(const CallExpr *CE) {
-  const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(CE->getCalleeDecl());
+  const auto *FD = dyn_cast_or_null<FunctionDecl>(CE->getCalleeDecl());
   if (FD && !FD->getBuiltinID()) {
     std::string FuncName = (FD->hasBody() ? "::" : "") +
                            Parent.getMangledName(FD, MangleCtx) + Triple;
@@ -231,8 +226,6 @@ void MapFunctionNamesConsumer::WalkAST::VisitCallExpr(const CallExpr *CE) {
   }
   VisitChildren(CE);
 }
-
-
 
 class MapFunctionNamesAction : public ASTFrontendAction {
 protected:
@@ -252,13 +245,13 @@ int main(int argc, const char **argv) {
   sys::PrintStackTraceOnErrorSignal(argv[0], false);
   PrettyStackTraceProgram X(argc, argv);
 
-  std::vector<std::string> Sources;
+  SmallVector<std::string, 4> Sources;
   CommonOptionsParser OptionsParser(argc, argv, ClangFnMapGenCategory,
                                     cl::ZeroOrMore);
+  const StringRef cppFile = ".cpp", ccFile = ".cc", cFile = ".c",
+                  cxxFile = ".cxx";
   for (int i = 1; i < argc; i++) {
     StringRef arg = argv[i];
-    const std::string cppFile = ".cpp", ccFile = ".cc", cFile = ".c",
-                      cxxFile = ".cxx";
     if (arg.endswith(cppFile) || arg.endswith(ccFile) || arg.endswith(cFile) ||
         arg.endswith(cxxFile)) {
       Sources.push_back(arg);

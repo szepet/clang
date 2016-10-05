@@ -2124,7 +2124,7 @@ bool SourceManager::isBeforeInTranslationUnit(SourceLocation LHS,
     return LOffs.second < ROffs.second;
   }
   // FIXME: Source locations from different translation unit.
-  return LOffs.second < ROffs.second;
+  return LOffs.first < ROffs.first;
 }
 
 void SourceManager::PrintStats() const {

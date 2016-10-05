@@ -11,12 +11,12 @@
 //
 //===--------------------------------------------------------------------===//
 
-#include "llvm/Support/PrettyStackTrace.h"
-#include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/LLVM.h"
+#include "clang/Basic/TargetInfo.h"
 #include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Frontend/Utils.h"
 #include "clang/Tooling/CommonOptionsParser.h"
+#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include <string>
 #include <vector>
@@ -27,25 +27,25 @@ using namespace clang;
 static std::string getTripleSuffix(const llvm::Triple &Triple) {
   // We are not going to support vendor and don't support OS and environment.
   // FIXME: support OS and environment correctly
-  llvm::Triple::ArchType T = Triple.getArch();
-  if (T == llvm::Triple::thumb)
-    T = llvm::Triple::arm;
+  Triple::ArchType T = Triple.getArch();
+  if (T == Triple::thumb)
+    T = Triple::arm;
   return Triple.getArchTypeName(T);
 }
 
 int main(int argc, const char **argv) {
   // Print a stack trace if we signal out.
-  sys::PrintStackTraceOnErrorSignal(argv[0],true);
+  sys::PrintStackTraceOnErrorSignal(argv[0], true);
   PrettyStackTraceProgram X(argc, argv);
 
-  typedef std::vector<const char *> StrVector;
-  StrVector Sources, Args;
+  SmallVector<StringRef, 4> Sources;
+  std::vector<const char*> Args;
   const StringRef cppFile = ".cpp", ccFile = ".cc", cFile = ".c",
-      cxxFile = ".cxx";
+                  cxxFile = ".cxx";
   for (int i = 1; i < argc; i++) {
     StringRef Arg = argv[i];
-    if (Arg.endswith(cppFile) || Arg.endswith(ccFile) ||
-        Arg.endswith(cFile) || Arg.endswith(cxxFile)) {
+    if (Arg.endswith(cppFile) || Arg.endswith(ccFile) || Arg.endswith(cFile) ||
+        Arg.endswith(cxxFile)) {
       Sources.push_back(argv[i]);
     } else {
       Args.push_back(argv[i]);
@@ -55,14 +55,15 @@ int main(int argc, const char **argv) {
   if (Sources.empty())
     return 1;
 
-  Args.push_back(Sources[0]);
-  IntrusiveRefCntPtr<CompilerInvocation> CI(createInvocationFromCommandLine(Args));
+  Args.push_back(Sources[0].data());
+  IntrusiveRefCntPtr<CompilerInvocation> CI(
+      createInvocationFromCommandLine(Args));
 
-  const std::string Suffix = "@" + getTripleSuffix(
-        llvm::Triple(CI->getTargetOpts().Triple));
+  const std::string Suffix =
+      "@" + getTripleSuffix(llvm::Triple(CI->getTargetOpts().Triple));
 
-  for (int i = 0, e = Sources.size(); i < e; ++i) {
-    const char *Path = realpath(Sources[i], NULL);
+  for (StringRef SourceFile : Sources) {
+    const char *Path = realpath(SourceFile.data(), nullptr);
     if (Path)
       outs() << Path << Suffix << " ";
   }
