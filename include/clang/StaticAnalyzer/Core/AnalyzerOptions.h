@@ -275,6 +275,9 @@ private:
   /// \sa getXTUDir
   Optional<StringRef> XTUDir;
 
+  /// \sa shouldReanalyzeXTUVisitedFns
+  Optional<bool> ReanalyzeXTUVisitedFns;
+
   /// A helper function that retrieves option for a given full-qualified
   /// checker name.
   /// Options for checkers can be specified via 'analyzer-config' command-line
@@ -553,6 +556,11 @@ public:
 
   /// Returns the directory containing the XTU related files.
   StringRef getXTUDir();
+
+  /// Returns whether functions that were analyzed from another translation unit
+  /// should be reanalyzed again as top level in case it is not called in its
+  /// own translation unit.
+  bool shouldReanalyzeXTUVisitedFns();
 
 public:
   AnalyzerOptions() :

@@ -376,3 +376,10 @@ StringRef AnalyzerOptions::getXTUDir() {
     XTUDir = getOptionAsString("xtu-dir", "");
   return XTUDir.getValue();
 }
+
+bool AnalyzerOptions::shouldReanalyzeXTUVisitedFns() {
+  if (!ReanalyzeXTUVisitedFns.hasValue())
+    ReanalyzeXTUVisitedFns =
+        getBooleanOption("reanalyze-xtu-visited", /*Default=*/false);
+  return ReanalyzeXTUVisitedFns.getValue();
+}
