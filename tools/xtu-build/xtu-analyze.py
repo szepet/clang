@@ -43,6 +43,8 @@ parser.add_argument('--timeout', dest='timeout',
 
 args = parser.parse_args()
 
+xtu_dir = os.path.abspath(args.xtu_dir)
+
 analyzer_params = []
 if args.enable_checker:
     analyzer_params += [ '-analyzer-checker', args.enable_checker ]
@@ -54,14 +56,12 @@ if args.extra_disable_checker:
     analyzer_params += [ '-analyzer-disable-checker', args.extra_disable_checker ]
 if args.analyzer_config:
     analyzer_params += [ '-analyzer-config', args.analyzer_config ]
+analyzer_params += [ '-analyzer-config', 'xtu-dir='+xtu_dir ]
 analyzer_params += [ '-analyzer-stats' ]
 
 out_dir = os.path.join(args.output_dir, 'xtu-analyze--' +
                        datetime.datetime.now()
                                .strftime('%Y-%m-%d--%H-%M-%S-%f'))
-
-xtu_dir = os.path.abspath(args.xtu_dir)
-
 try:
     os.makedirs(out_dir)
 except OSError:

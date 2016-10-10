@@ -425,7 +425,6 @@ void AnalysisConsumer::storeTopLevelDecls(DeclGroupRef DG) {
 
 extern std::string getMangledName(const NamedDecl *ND,
                                   MangleContext *MangleCtx);
-extern char *getExplicitBuildDir();
 
 void lockedWrite(const std::string &fileName, const std::string &content) {
   if (content.empty()) 
@@ -466,16 +465,14 @@ static bool shouldSkipFunction(const Decl *D,
   // Otherwise, if we visited the function before, do not reanalyze it.
   const FunctionDecl *FD = dyn_cast<FunctionDecl>(D);
   if (Visited.count(D)) {
-    // if (Opts->getIPAMode() == IPAK_Summary)
-    //  return true; // Functions analyzed in summary are analyzed
-    //  completely
-    if (D->getAccess() == AS_private)
+    return true;
+    /*if (D->getAccess() == AS_private)
       return true;
     if (FD && !FD->hasExternalFormalLinkage())
-      return true;
+      return true;*/
   }
 
-  if (FD) {
+  if (FD && FD->hasExternalFormalLinkage()) {
     std::string MangledFnName = getMangledName(FD, MangleCtx) + "@" + Triple;
     if (VisitedAsXTU.count(MangledFnName))
       return true;
@@ -528,14 +525,12 @@ void AnalysisConsumer::HandleDeclsCallGraph(const unsigned LocalTUDeclsSize) {
   SetOfConstDecls Visited;
   SetOfConstDecls VisitedAsTopLevel;
 
-  //ednikru
-  //visitedFunc.txt collects all functions that were
-  //inlinded as callee or top level caller
-  //these functions will not be visited as top level nodes
+  // The visitedFunc.txt collects all functions that were inlinded as callee or
+  // top level caller these functions will not be visited as top level nodes.
   llvm::StringSet<> VisitedAsXTU;
   std::string VisitedFuncSetFile;
-  const char *BuildDir = getExplicitBuildDir();
-  if (BuildDir) {
+  StringRef BuildDir = Opts->getXTUDir();
+  if (!BuildDir.empty()) {
     clock_t t1 = clock();
     VisitedFuncSetFile = std::string(BuildDir) + "/visitedFunc.txt";
     std::ifstream VisitedFuncSetStream(VisitedFuncSetFile.c_str());
@@ -583,7 +578,7 @@ void AnalysisConsumer::HandleDeclsCallGraph(const unsigned LocalTUDeclsSize) {
   }
 
   //XTU
-  if (BuildDir) {
+  if (!BuildDir.empty()) {
     clock_t t1 = clock();
     llvm::StringSet<> NewVisited;
 
