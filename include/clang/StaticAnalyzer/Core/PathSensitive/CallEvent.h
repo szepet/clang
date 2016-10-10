@@ -444,22 +444,7 @@ public:
   }
 
   RuntimeDefinition getRuntimeDefinition() const override;
-/*XTU This is implemented in CallEvent.cpp
- {
-    const FunctionDecl *FD = getDecl();
-    // Note that the AnalysisDeclContext will have the FunctionDecl with
-    // the definition (if one exists).
-    if (FD) {
-      AnalysisDeclContext *AD =
-        getLocationContext()->getAnalysisDeclContext()->
-        getManager()->getContext(FD);
-      if (AD->getBody())
-        return RuntimeDefinition(AD->getDecl());
-    }
 
-    return RuntimeDefinition();
-  }
-*/
   bool argumentsMayEscape() const override;
 
   void getInitialStackFrameContents(const StackFrameContext *CalleeCtx,

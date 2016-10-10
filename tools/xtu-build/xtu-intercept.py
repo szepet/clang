@@ -49,7 +49,7 @@ if len(filter(lambda x: x != 0, rets)) != 0 :
     ret = 1
 
 if len(files) > 0:
-    if system(' '.join([clang_path + "clang-func-mapping"] + files + ["--"] + call_args)) != 0 :
+    if system(' '.join([clang_path + "clang-func-mapping"] + ["--xtu-dir " + xtu_dir] + files + ["--"] + call_args)) != 0 :
         ret = 1
 
 exit(ret)

@@ -1428,23 +1428,6 @@ const llvm::fltSemantics &ASTContext::getFloatTypeSemantics(QualType T) const {
 //                         Cross-translation unit support
 //===----------------------------------------------------------------------===//
 
-// FIXME: temporary solution, replace with frontend option
-const char *getBuildDir() {
-  const char *BuildDir;
-  if ((BuildDir = getenv("OUT_DIR")) != NULL)
-    return BuildDir;
-  if ((BuildDir = getenv("TEMP")) != NULL)
-    return BuildDir;
-  if ((BuildDir = getenv("TMP")) != NULL)
-    return BuildDir;
-  if ((BuildDir = getenv("TMPDIR")) != NULL)
-    return BuildDir;
-  return "/tmp";
-}
-const char *getExplicitBuildDir() {
-  return getenv("OUT_DIR");
-}
-
 std::string getMangledName(const NamedDecl *ND, MangleContext *MangleCtx) {
   std::string MangledName;
   llvm::raw_string_ostream OS(MangledName);
@@ -1484,8 +1467,8 @@ const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,
       ItaniumMangleContext::create(FD->getASTContext(), *Diags));
   MangleCtx->setShouldForceMangleProto(true);
   std::string MangledFnName = getMangledName(FD, MangleCtx.get());
-  std::string BuildDir = getBuildDir();
-  std::string ExternalFunctionMap = BuildDir + "/externalFnMap.txt";
+  StringRef BuildDir = CI.getAnalyzerOpts()->getXTUDir();
+  std::string ExternalFunctionMap = (BuildDir + "/externalFnMap.txt").str();
   ASTUnit *Unit = nullptr;
   std::string ASTFileName;
 
@@ -1497,7 +1480,7 @@ const FunctionDecl *ASTContext::getXTUDefinition(const FunctionDecl *FD,
       std::ifstream ExternalFnMapFile(ExternalFunctionMap);
       std::string FunctionName, FileName;
       while (ExternalFnMapFile >> FunctionName >> FileName)
-        FunctionFileMap[FunctionName] = BuildDir + "/" + FileName;
+        FunctionFileMap[FunctionName] = (BuildDir + "/" + FileName).str();
       ExternalFnMapFile.close();
     }
 
@@ -1563,8 +1546,6 @@ ASTImporter &ASTContext::getOrCreateASTImporter(ASTContext &From) {
   ASTUnitImporterMap[From.getTranslationUnitDecl()] = NewImporter;
   return *NewImporter;
 }
-
-
 
 CharUnits ASTContext::getDeclAlign(const Decl *D, bool ForAlignof) const {
   unsigned Align = Target->getCharWidth();

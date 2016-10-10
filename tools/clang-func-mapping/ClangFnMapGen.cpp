@@ -43,20 +43,11 @@ typedef StringSet<> StrSet;
 typedef StringMap<StrSet> CallGraph;
 
 static cl::OptionCategory ClangFnMapGenCategory("clang-fnmapgen options");
-
-// Utility Functions to get the temporary directory
-static const char *getTmpDir(void) {
-  char *tmpdir;
-  if ((tmpdir = getenv("OUT_DIR")) != nullptr)
-    return tmpdir;
-  if ((tmpdir = getenv("TEMP")) != nullptr)
-    return tmpdir;
-  if ((tmpdir = getenv("TMP")) != nullptr)
-    return tmpdir;
-  if ((tmpdir = getenv("TMPDIR")) != nullptr)
-    return tmpdir;
-  return "/tmp";
-}
+static cl::opt<std::string> XTUDir(
+    "xtu-dir",
+    cl::desc(
+        "Directory that contains the XTU related files (e.g.: AST dumps)."),
+    cl::init(""), cl::cat(ClangFnMapGenCategory));
 
 static void lockedWrite(const std::string &fileName,
                         const std::string &content) {
@@ -197,7 +188,7 @@ bool MapFunctionNamesConsumer::isCLibraryFunction(const FunctionDecl *FD) {
 
 MapFunctionNamesConsumer::~MapFunctionNamesConsumer() {
   // Flush results to files.
-  std::string BuildDir = getTmpDir();
+  std::string BuildDir = XTUDir;
   lockedWrite(BuildDir + "/externalFns.txt", ExternFuncStr.str());
   lockedWrite(BuildDir + "/definedFns.txt", DefinedFuncsStr.str());
   std::stringstream CFGStr;
@@ -248,6 +239,11 @@ int main(int argc, const char **argv) {
   SmallVector<std::string, 4> Sources;
   CommonOptionsParser OptionsParser(argc, argv, ClangFnMapGenCategory,
                                     cl::ZeroOrMore);
+
+  if (XTUDir.getNumOccurrences() != 1) {
+    errs() << "Exactly one XTU dir should be provided\n";
+    return 1;
+  }
   const StringRef cppFile = ".cpp", ccFile = ".cc", cFile = ".c",
                   cxxFile = ".cxx";
   for (int i = 1; i < argc; i++) {
