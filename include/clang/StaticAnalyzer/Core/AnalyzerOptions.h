@@ -269,6 +269,9 @@ private:
   /// \sa shouldDisplayNotesAsEvents
   Optional<bool> DisplayNotesAsEvents;
 
+  /// \sa getXTUDir
+  Optional<StringRef> XTUDir;
+
   /// A helper function that retrieves option for a given full-qualified
   /// checker name.
   /// Options for checkers can be specified via 'analyzer-config' command-line
@@ -544,6 +547,9 @@ public:
   /// This is controlled by the 'extra-notes-as-events' option, which defaults
   /// to false when unset.
   bool shouldDisplayNotesAsEvents();
+
+  /// Returns the directory containing the XTU related files.
+  StringRef getXTUDir();
 
 public:
   AnalyzerOptions() :
