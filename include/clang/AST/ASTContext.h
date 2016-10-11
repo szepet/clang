@@ -33,7 +33,6 @@
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/SanitizerBlacklist.h"
 #include "clang/Basic/VersionTuple.h"
-#include "clang/Frontend/CompilerInstance.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
@@ -54,6 +53,7 @@ namespace clang {
   class ASTRecordLayout;
   class BlockExpr;
   class CharUnits;
+  class CompilerInstance;
   class DiagnosticsEngine;
   class Expr;
   class ExternalASTSource;
