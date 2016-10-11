@@ -6,6 +6,7 @@ import os
 from os import system
 import re
 import string
+import subprocess
 import random
 
 clang_path = os.environ.get('CLANG_PATH', "")
@@ -19,14 +20,24 @@ call_args = []
 
 xtu_dir = os.environ.get('OUT_DIR', "")
 
-random_magic_set = string.ascii_lowercase + string.digits
-random_magic = ''.join(random.sample(random_magic_set * 6, 6))
-os.environ['XTU_MAGIC'] = random_magic
+clang_arch_bin = clang_path + "/clang-cmdline-arch-extractor"
 
-def get_ast_path(f):
-    return os.path.join(xtu_dir,
-                        os.path.join("/ast/" + random_magic,
+
+def get_ast_path(f, call_args):
+    fullCmd = ' '.join([clang_arch_bin] + call_args + [f])
+    output = subprocess.check_output(fullCmd, shell = True)
+    arch = output[output.rfind('@')+1:].strip()
+    ret = os.path.join(xtu_dir,
+                        os.path.join("/ast/" + arch,
                                      os.path.realpath(f)[1:] + ".ast")[1:])
+    try:
+        os.makedirs(os.path.dirname(ret))
+    except OSError:
+        if os.path.isdir(os.path.dirname(ret)):
+            pass # Dir already exists. Checking upfront is useless due to races.
+        else:
+            raise
+    return ret
 
 # FIXME: More precise filter is needed here.
 for ind in range(1, len(argv)) :
@@ -36,14 +47,9 @@ for ind in range(1, len(argv)) :
     else :
         call_args.append(arg)
 call_args.append("-w")
-for f in files:
-    try:
-        os.makedirs(os.path.dirname(get_ast_path(f)))
-    except OSError:
-        pass
 
 print(' '.join(args + call_args ))
-rets = [system(' '.join(args + call_args + [f, "-o", get_ast_path(f) ])) for f in files]
+rets = [system(' '.join(args + call_args + [f, "-o", get_ast_path(f, call_args) ])) for f in files]
 ret = 0
 if len(filter(lambda x: x != 0, rets)) != 0 :
     ret = 1

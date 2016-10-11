@@ -29,7 +29,6 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/TrailingObjects.h"
-#include "clang/Frontend/CompilerInstance.h"
 
 namespace clang {
 struct ASTTemplateArgumentListInfo;

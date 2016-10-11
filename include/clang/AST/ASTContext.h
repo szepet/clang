@@ -41,7 +41,6 @@
 #include "clang/Basic/Specifiers.h"
 #include "clang/Basic/XRayLists.h"
 #include "clang/Basic/VersionTuple.h"
-#include "clang/Frontend/CompilerInstance.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -85,6 +84,7 @@ class ASTRecordLayout;
 class AtomicExpr;
 class BlockExpr;
 class CharUnits;
+class CompilerInstance;
 class CXXABI;
 class DiagnosticsEngine;
 class Expr;

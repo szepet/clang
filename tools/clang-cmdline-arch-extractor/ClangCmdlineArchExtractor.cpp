@@ -24,7 +24,7 @@
 using namespace llvm;
 using namespace clang;
 
-static std::string getTripleSuffix(const llvm::Triple &Triple) {
+static std::string getTripleSuffix(const Triple &Triple) {
   // We are not going to support vendor and don't support OS and environment.
   // FIXME: support OS and environment correctly
   Triple::ArchType T = Triple.getArch();

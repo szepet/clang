@@ -27,8 +27,6 @@
 #include "llvm/Support/Signals.h"
 #include <assert.h>
 #include <fstream>
-#include <iostream>
-#include <limits.h>
 #include <sstream>
 #include <string>
 #include <sys/file.h>
@@ -81,10 +79,8 @@ private:
 public:
   MapFunctionNamesConsumer(ASTContext &Context, ItaniumMangleContext *MangleCtx)
       : Ctx(Context), ItaniumCtx(MangleCtx),
-        Triple(std::string("@") + getTripleSuffix(Context)),
-        Magic(getenv("XTU_MAGIC") ? getenv("XTU_MAGIC") : "") {}
+        Triple(std::string("@") + getTripleSuffix(Context)) {}
   std::string CurrentFileName;
-  std::string Magic;
 
   ~MapFunctionNamesConsumer();
   virtual void HandleTranslationUnit(ASTContext &Ctx) {
@@ -121,10 +117,10 @@ std::string MapFunctionNamesConsumer::getMangledName(const FunctionDecl *FD,
                                                      MangleContext *Ctx) {
   std::string MangledName;
   llvm::raw_string_ostream os(MangledName);
-  if (const CXXConstructorDecl *CCD = dyn_cast<CXXConstructorDecl>(FD))
+  if (const auto *CCD = dyn_cast<CXXConstructorDecl>(FD))
     // FIXME: Use correct Ctor/DtorType.
     Ctx->mangleCXXCtor(CCD, Ctor_Complete, os);
-  else if (const CXXDestructorDecl *CDD = dyn_cast<CXXDestructorDecl>(FD))
+  else if (const auto *CDD = dyn_cast<CXXDestructorDecl>(FD))
     Ctx->mangleCXXDtor(CDD, Dtor_Complete, os);
   else
     Ctx->mangleName(FD, os);
@@ -148,7 +144,8 @@ void MapFunctionNamesConsumer::handleDecl(const Decl *D) {
         free(Path);
       }
 
-      std::string FileName = std::string("/ast/") + Magic + CurrentFileName;
+      std::string FileName =
+          std::string("/ast/") + getTripleSuffix(Ctx) + CurrentFileName;
       std::string FullName = MangledName + Triple;
 
       if (!FileName.empty())
