@@ -25,7 +25,6 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SubEngine.h"
-#include "clang/Frontend/CompilerInstance.h"
 
 namespace clang {
 
@@ -134,7 +133,7 @@ public:
 
   BugReporter& getBugReporter() { return BR; }
 
-  CompilerInstance & getCompilerInstance() { return CI; }
+  CompilerInstance &getCompilerInstance() { return CI; }
 
   const NodeBuilderContext &getBuilderContext() {
     assert(currBldrCtx);
