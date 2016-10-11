@@ -68,7 +68,17 @@ except OSError:
     print 'Output directory %s already exists!' % out_dir
     sys.exit(1)
 
-clang_path = os.path.join(os.getenv('CLANG_PATH', ''), 'clang')
+clang_path = os.environ.get('CLANG_PATH', "")
+if clang_path :
+    clang_path += "/"
+else:
+    from distutils.spawn import find_executable
+    clang_path = find_executable("clang-cmdline-arch-extractor")
+    clang_path = clang_path[0:len(clang_path)-len("clang-cmdline-arch-extractor")]
+if not clang_path:
+    print("Error: no sufficient clang found.")
+
+clang_path = os.path.join(clang_path, 'clang')
 ccc_analyzer_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
                                                               'ccc-analyzer')
 analyzer_env = {}

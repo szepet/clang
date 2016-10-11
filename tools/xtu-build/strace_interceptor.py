@@ -58,8 +58,14 @@ src_pattern = re.compile(".*\.(cc|c|cxx|cpp)'$")
 clang_path = os.environ.get('CLANG_PATH', "")
 if clang_path :
     clang_path += "/"
+else:
+    from distutils.spawn import find_executable
+    clang_path = find_executable("clang-cmdline-arch-extractor")
+    clang_path = clang_path[0:len(clang_path)-len("clang-cmdline-arch-extractor")]
+if not clang_path:
+    print("Error: no sufficient clang found.")
 
-clang_arch_bin = clang_path + "/clang-cmdline-arch-extractor"
+clang_arch_bin = clang_path + "clang-cmdline-arch-extractor"
 
 def write_file_arch(cmd, fullpath) :
     files = [ arg for arg in cmd if src_pattern.match(arg) ]
