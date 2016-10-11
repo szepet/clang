@@ -89,11 +89,11 @@ public:
     return Result.first->second;
   }
 
- 
   bool shouldForceMangleProto() const { return ShouldForceMangleProto; }
   void setShouldForceMangleProto(bool ForceMangleArguments) {
     ShouldForceMangleProto = ForceMangleArguments;
   }
+
   /// @name Mangler Entry Points
   /// @{
 

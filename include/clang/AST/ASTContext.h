@@ -44,8 +44,6 @@
 #include <memory>
 #include <vector>
 
-
-
 namespace llvm {
   struct fltSemantics;
 }
