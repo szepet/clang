@@ -101,6 +101,21 @@ testImport(const std::string &FromCode, Language FromLang,
   return Verifier.match(Imported, AMatcher);
 }
 
+TEST(ImportExpr, ImportAtomic) {
+  MatchVerifier<Decl> Verifier;
+  EXPECT_TRUE(testImport("void declToImport() { typedef _Atomic(int) a; }",
+                         Lang_CXX, "", Lang_CXX, Verifier,
+                         functionDecl(
+                           hasBody(
+                             compoundStmt(
+                               has(
+                                 declStmt(
+                                   has(
+                                     typedefDecl(
+                                       has(
+                                         atomicType()))))))))));
+}
+
 TEST(ImportExpr, ImportStringLiteral) {
   MatchVerifier<Decl> Verifier;
   EXPECT_TRUE(testImport("void declToImport() { \"foo\"; }",
