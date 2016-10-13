@@ -74,6 +74,7 @@ if clang_path :
 else:
     from distutils.spawn import find_executable
     clang_path = find_executable("clang-cmdline-arch-extractor")
+    clang_path = clang_path[0:len(clang_path)-len("clang-cmdline-arch-extractor")]
 if not clang_path:
     print("Error: no sufficient clang found.")
 
