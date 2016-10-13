@@ -137,9 +137,9 @@ void MapFunctionNamesConsumer::handleDecl(const Decl *D) {
       std::string MangledName = getMangledName(FD);
       const SourceManager &SM = Ctx.getSourceManager();
       if (CurrentFileName.empty()) {
-        const char *SMgrName =
+        StringRef SMgrName =
             SM.getFileEntryForID(SM.getMainFileID())->getName();
-        char *Path = realpath(SMgrName, nullptr);
+        char *Path = realpath(SMgrName.str().c_str(), nullptr);
         CurrentFileName = Path;
         free(Path);
       }
