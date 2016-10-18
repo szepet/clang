@@ -93,6 +93,7 @@ def map_functions(command) :
 clear_file(mainargs.xtuindir + '/cfg.txt')
 clear_file(mainargs.xtuindir + '/definedFns.txt')
 clear_file(mainargs.xtuindir + '/externalFns.txt')
+clear_file(mainargs.xtuindir + '/externalFnMap.txt')
 
 ast_workers = multiprocessing.Pool(processes=mainargs.threads)
 for source in src_order :
@@ -100,10 +101,34 @@ for source in src_order :
 ast_workers.close()
 ast_workers.join()
 
-
 funcmap_workers = multiprocessing.Pool(processes=mainargs.threads)
 for command in cmd_order :
     funcmap_workers.apply_async(map_functions, [command])
 funcmap_workers.close()
 funcmap_workers.join()
+
+
+# Generate externalFnMap.txt
+
+func_2_file = {}
+extfunc_2_file = {}
+
+defined_fns_filename = mainargs.xtuindir + "/definedFns.txt"
+with open(defined_fns_filename,  "r") as defined_fns_file:
+    for line in defined_fns_file:
+        funcname, filename = line.strip().split(' ')
+        if funcname.startswith('!') :
+            funcname = funcname[1:] # main function
+        func_2_file[funcname] = filename
+
+extern_fns_filename = mainargs.xtuindir + "/externalFns.txt"
+with open(extern_fns_filename,  "r") as extern_fns_file:
+    for line in extern_fns_file:
+        line = line.strip()
+        if line in func_2_file and not line in extfunc_2_file :
+            extfunc_2_file[line] = func_2_file[line]
+
+with open(mainargs.xtuindir + "/externalFnMap.txt",  "w") as out_file:
+    for func, fname in extfunc_2_file.items() :
+        out_file.write("%s %s.ast\n" % (func, fname))
 
