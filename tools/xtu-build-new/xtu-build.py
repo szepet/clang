@@ -9,10 +9,12 @@ import re
 import subprocess
 import string
 
+threading_factor = int(multiprocessing.cpu_count() * 1.5)
+
 parser = argparse.ArgumentParser(description='Executes 1st pass of XTU analysis')
 parser.add_argument('-b', required=True, dest='buildlog', metavar='build.json', help='Use a JSON Compilation Database')
 parser.add_argument('-p', metavar='preanalyze-dir', dest='xtuindir', help='Use directory for reading preanalyzation data (default=".xtu")', default='.xtu')
-parser.add_argument('-j', metavar='threads', dest='threads', help='Number of threads used (default=' + str(multiprocessing.cpu_count()) + ')', default=multiprocessing.cpu_count())
+parser.add_argument('-j', metavar='threads', dest='threads', help='Number of threads used (default=' + str(threading_factor) + ')', default=multiprocessing.cpu_count())
 parser.add_argument('-v', dest='verbose', action='store_true', help='Verbose output of every command executed')
 parser.add_argument('--clang-path', metavar='clang-path', dest='clang_path', help='Set path of clang binaries to be used (default taken from CLANG_PATH environment variable)', default=os.environ.get('CLANG_PATH', '.'))
 mainargs = parser.parse_args()
@@ -53,7 +55,7 @@ def get_command_arguments(cmd) :
             had_command = True
     return args
 
-for source in src_order :
+def generate_ast(source) :
     cmd = src_2_cmd[source]
     args = get_command_arguments(cmd)
     arch_command = clang_path + 'clang-cmdline-arch-extractor ' + string.join(args, ' ') + ' ' + source
@@ -74,11 +76,24 @@ for source in src_order :
         print ast_command
     subprocess.call(ast_command, shell=True)
 
-for command in cmd_order :
-    args = get_command_arguments(cmd)
+def map_functions(command) :
+    args = get_command_arguments(command)
     sources = cmd_2_src[command]
     funcmap_command = clang_path + 'clang-func-mapping --xtu-dir ' + mainargs.xtuindir + ' ' + string.join(sources, ' ') + ' -- ' + string.join(args, ' ')
     if mainargs.verbose :
         print funcmap_command
     subprocess.call(funcmap_command, shell=True)
+
+ast_workers = multiprocessing.Pool(processes=mainargs.threads)
+for source in src_order :
+    ast_workers.apply_async(generate_ast, [source])
+ast_workers.close()
+ast_workers.join()
+
+
+funcmap_workers = multiprocessing.Pool(processes=mainargs.threads)
+for command in cmd_order :
+    funcmap_workers.apply_async(map_functions, [command])
+funcmap_workers.close()
+funcmap_workers.join()
 
