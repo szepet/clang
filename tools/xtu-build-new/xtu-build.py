@@ -14,7 +14,7 @@ threading_factor = int(multiprocessing.cpu_count() * 1.5)
 parser = argparse.ArgumentParser(description='Executes 1st pass of XTU analysis')
 parser.add_argument('-b', required=True, dest='buildlog', metavar='build.json', help='Use a JSON Compilation Database')
 parser.add_argument('-p', metavar='preanalyze-dir', dest='xtuindir', help='Use directory for reading preanalyzation data (default=".xtu")', default='.xtu')
-parser.add_argument('-j', metavar='threads', dest='threads', help='Number of threads used (default=' + str(threading_factor) + ')', default=multiprocessing.cpu_count())
+parser.add_argument('-j', metavar='threads', dest='threads', help='Number of threads used (default=' + str(threading_factor) + ')', default=threading_factor)
 parser.add_argument('-v', dest='verbose', action='store_true', help='Verbose output of every command executed')
 parser.add_argument('--clang-path', metavar='clang-path', dest='clang_path', help='Set path of clang binaries to be used (default taken from CLANG_PATH environment variable)', default=os.environ.get('CLANG_PATH', '.'))
 mainargs = parser.parse_args()
@@ -44,6 +44,12 @@ for step in buildlog :
             cmd_order.append(step['command'])
         else :
             cmd_2_src[step['command']].append(step['file'])
+
+def clear_file(filename) :
+    try :
+        os.remove(filename)
+    except OSError:
+        pass
 
 def get_command_arguments(cmd) :
     had_command = False
@@ -83,6 +89,10 @@ def map_functions(command) :
     if mainargs.verbose :
         print funcmap_command
     subprocess.call(funcmap_command, shell=True)
+
+clear_file(mainargs.xtuindir + '/cfg.txt')
+clear_file(mainargs.xtuindir + '/definedFns.txt')
+clear_file(mainargs.xtuindir + '/externalFns.txt')
 
 ast_workers = multiprocessing.Pool(processes=mainargs.threads)
 for source in src_order :
