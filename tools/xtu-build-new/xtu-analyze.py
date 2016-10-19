@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import string
+import sys
 
 threading_factor = int(multiprocessing.cpu_count() * 1.5)
 
@@ -98,7 +99,8 @@ except OSError:
 
 ccc_workers = multiprocessing.Pool(processes=mainargs.threads)
 for step in buildlog :
-    ccc_workers.apply_async(analyze, [step['directory'], step['command']])
+    if step['command'] in cmd_2_order :
+        ccc_workers.apply_async(analyze, [step['directory'], step['command']])
 ccc_workers.close()
 ccc_workers.join()
 
