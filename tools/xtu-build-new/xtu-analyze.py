@@ -41,7 +41,7 @@ analyzer_params += [ '-analyzer-config', 'xtu-dir=' + os.path.abspath(mainargs.x
 analyzer_params += [ '-analyzer-stats' ]
 
 analyzer_env = {}
-analyzer_env['CLANG'] = clang_path
+analyzer_env['CLANG'] = os.path.join(clang_path, 'clang')
 analyzer_env['OUT_DIR'] = os.path.abspath(mainargs.xtuindir)
 analyzer_env['CCC_ANALYZER_HTML'] = os.path.abspath(mainargs.xtuoutdir)
 analyzer_env['CCC_ANALYZER_ANALYSIS'] = ' '.join(analyzer_params)
