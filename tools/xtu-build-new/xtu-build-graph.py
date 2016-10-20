@@ -12,7 +12,7 @@ from collections import defaultdict
 import json
 
 parser = argparse.ArgumentParser(description='generate build dependency graph')
-parser.add_argument('-b', dest='commands_file',
+parser.add_argument('-b', required=True, dest='commands_file',
                     help='absolute path to compile_commands.json (including file name)')
 parser.add_argument('-c', dest='cfg_file', help='path to cfg.txt')
 parser.add_argument('-d', dest='defined_fns_file',
@@ -21,8 +21,6 @@ parser.add_argument('-e', dest='extern_fns_file', help='path to external funs')
 parser.add_argument('-o', dest='out_file', help='output file')
 
 args = parser.parse_args()
-if not args.commands_file:
-    parser.error('compile_commands.json is required')
 
 InOut = namedtuple("InOut", "into out")
 
