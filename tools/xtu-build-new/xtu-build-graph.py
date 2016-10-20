@@ -3,8 +3,6 @@
 
 import copy
 import re
-import os
-import stat
 import argparse
 import itertools
 from collections import namedtuple
@@ -13,7 +11,8 @@ import json
 
 parser = argparse.ArgumentParser(description='generate build dependency graph')
 parser.add_argument('-b', required=True, dest='commands_file',
-                    help='absolute path to compile_commands.json (including file name)')
+                    help=("absolute path to compile_commands.json "
+                          "(including file name)"))
 parser.add_argument('-c', dest='cfg_file', help='path to cfg.txt')
 parser.add_argument('-d', dest='defined_fns_file',
                     help='path to defined function file')
@@ -25,33 +24,33 @@ args = parser.parse_args()
 InOut = namedtuple("InOut", "into out")
 
 
-def remove_nodes(g, nodes):
+def remove_nodes(graph, nodes):
     for node in nodes:
-        for pointed in g[node].out:
-            g[pointed].into.remove(node)
-        g.pop(node)
+        for pointed in graph[node].out:
+            graph[pointed].into.remove(node)
+        graph.pop(node)
     nodes = []
 
 
-def eliminate_circles(g):
+def eliminate_circles(graph):
     removable_edges = dict()
-    for node in g:
+    for node in graph:
         removable_edges[node] = InOut(set(), set())
 
-    while g:
-        no_dependency = [node for node in g if len(g[node].into) == 0]
+    while graph:
+        no_dependency = [node for node in graph if len(graph[node].into) == 0]
         if len(no_dependency) > 0:
-            remove_nodes(g, no_dependency)
+            remove_nodes(graph, no_dependency)
             continue
-        removable_node = max(iter(list(g.keys())),
-                       key=(lambda key: len(g[key].out)))
-        for node in g[removable_node].into:
-            g[node].out.remove(removable_node)
+        removable_node = max(iter(list(graph.keys())),
+                       key=(lambda key: len(graph[key].out)))
+        for node in graph[removable_node].into:
+            graph[node].out.remove(removable_node)
             removable_edges[node].out.add(removable_node)
             removable_edges[removable_node].into.add(node)
-        for node in g[removable_node].out:
-            g[node].into.remove(removable_node)
-        g.pop(removable_node)
+        for node in graph[removable_node].out:
+            graph[node].into.remove(removable_node)
+        graph.pop(removable_node)
     return removable_edges
 
 
@@ -84,7 +83,6 @@ def main():
     else:
         defined_fns_filename = tmpdir + "definedFns.txt"
 
-    os.chmod(defined_fns_filename, stat.S_IRUSR)
     with open(defined_fns_filename, "r") as defined_fns_file:
         for line in defined_fns_file:
             funcname, filename = line.strip().split(' ')
@@ -97,7 +95,6 @@ def main():
     else:
         extern_fns_filename = tmpdir + "externalFns.txt"
     
-    os.chmod(extern_fns_filename, stat.S_IRUSR)
     with open(extern_fns_filename, "r") as extern_fns_file:
         for line in extern_fns_file:
             line = line.strip()
@@ -125,7 +122,6 @@ def main():
     else:
         cfg_filename = tmpdir + "cfg.txt"
 
-    os.chmod(cfg_filename, stat.S_IRUSR)
     with open(cfg_filename, "r") as cfg_file:
         for line in cfg_file:
             funcs = line.strip().split(' ')
@@ -160,14 +156,16 @@ def main():
     commandlist = [command for command in build_json
                 if src_pattern.match(command['file'])]
 
-    compile_commands_id = {commandlist[i]['command']: i for i in range(0, len(commandlist))}
+    compile_commands_id = { commandlist[i]['command']:i
+                            for i in range(0, len(commandlist)) }
     command_id_to_compile_command_id = []
 
     sorted_commands = sorted(commandlist)
     file_to_command_ids = defaultdict(set)
     command_id = 0
     for buildcommand in sorted_commands:
-        command_id_to_compile_command_id.append(compile_commands_id[buildcommand['command']])
+        command_id_to_compile_command_id.append(
+                compile_commands_id[buildcommand['command']])
         file_to_command_ids[buildcommand['file']].add(command_id)
         command_id += 1
 
@@ -183,8 +181,9 @@ def main():
         callerfile = caller.split('::')[0]
         for callerbuild_id in file_to_command_ids[callerfile]:
             for callee in callees:
-                for calleebuild_id in file_to_command_ids[callee.split('::')[0]]:
-                    if(calleebuild_id != callerbuild_id):
+                calleefile = callee.split('::')[0]
+                for calleebuild_id in file_to_command_ids[calleefile]:
+                    if calleebuild_id != callerbuild_id:
                         build_graph[callerbuild_id].out.add(calleebuild_id)
                         build_graph[calleebuild_id].into.add(callerbuild_id)
 
@@ -194,10 +193,9 @@ def main():
     removable_edges = eliminate_circles(build_graph_copy)
 
     build_graph = {
-    key: InOut(
-    build_graph[key].into - removable_edges.get(key, InOut(set(), set())).into,
-    build_graph[key].out - removable_edges.get(key, InOut(set(), set())).out)
-    for key in list(build_graph.keys())
+    key: InOut( build_graph[key].into - removable_edges[key].into,
+                build_graph[key].out - removable_edges[key].out)
+         for key in list(build_graph.keys())
     }
 
     if args.out_file:
@@ -205,7 +203,7 @@ def main():
     else:
         out_file = tmpdir + "build_dependency.json"
     
-    print("write build_dependency graph to " +out_file )
+    print("write build_dependency graph to " + out_file )
     with open(out_file, "w") as dependency_file:
         list_graph = []
         for n in build_graph:
