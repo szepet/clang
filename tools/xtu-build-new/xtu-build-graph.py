@@ -15,8 +15,10 @@ parser = argparse.ArgumentParser(description='generate build dependency graph')
 parser.add_argument('-b', dest='commands_file',
                     help='absolute path to compile_commands.json (including file name)')
 parser.add_argument('-c', dest='cfg_file', help='path to cfg.txt')
-parser.add_argument('-o', dest='out_file', default='build_graph.json',
-                    help='output file')
+parser.add_argument('-d', dest='defined_fns_file',
+                    help='path to defined function file')
+parser.add_argument('-e', dest='extern_fns_file', help='path to external funs')
+parser.add_argument('-o', dest='out_file', help='output file')
 
 args = parser.parse_args()
 if not args.commands_file:
@@ -70,7 +72,7 @@ def topological_order(graph):  # works only on DAG
 
 
 def main():
-        #-------------- obtain function-to-file mapping --------------#
+    #-------------- obtain function-to-file mapping --------------#
     print('Obtaining function-to-file mapping')
     #sys.stdout.flush()
 
@@ -79,7 +81,11 @@ def main():
     fns = dict()
     external_map = dict()
 
-    defined_fns_filename = tmpdir + "definedFns.txt"
+    if args.defined_fns_file:
+        defined_fns_filename = args.defined_fns_file
+    else:
+        defined_fns_filename = tmpdir + "definedFns.txt"
+
     os.chmod(defined_fns_filename, stat.S_IRUSR)
     with open(defined_fns_filename, "r") as defined_fns_file:
         for line in defined_fns_file:
@@ -88,7 +94,11 @@ def main():
                 funcname = funcname[1:]
             fns[funcname] = filename
 
-    extern_fns_filename = tmpdir + "externalFns.txt"
+    if args.extern_fns_file:
+        extern_fns_filename = args.extern_fns_file
+    else:
+        extern_fns_filename = tmpdir + "externalFns.txt"
+    
     os.chmod(extern_fns_filename, stat.S_IRUSR)
     with open(extern_fns_filename, "r") as extern_fns_file:
         for line in extern_fns_file:
@@ -112,10 +122,10 @@ def main():
     ast_regexp = re.compile("^/ast/(?:\w)+")
 
     # Read call graph
-    #if(args.cfg_file):
-    #    cfg_filename = args.cfg_file
-    #else:
-    cfg_filename = tmpdir + "cfg.txt"
+    if args.cfg_file:
+        cfg_filename = args.cfg_file
+    else:
+        cfg_filename = tmpdir + "cfg.txt"
 
     os.chmod(cfg_filename, stat.S_IRUSR)
     with open(cfg_filename, "r") as cfg_file:
@@ -180,8 +190,6 @@ def main():
                         build_graph[callerbuild_id].out.add(calleebuild_id)
                         build_graph[calleebuild_id].into.add(callerbuild_id)
 
-    #print build_graph
-
     # eliminate circles from build_graph
     build_graph_copy = copy.deepcopy(build_graph)
     print("eliminate circles")
@@ -193,8 +201,14 @@ def main():
     build_graph[key].out - removable_edges.get(key, InOut(set(), set())).out)
     for key in list(build_graph.keys())
     }
-    print("write build_dependency.json")
-    with open(tmpdir + "build_dependency.json", "w") as dependency_file:
+
+    if args.out_file:
+        out_file = args.out_file
+    else:
+        out_file = tmpdir + "build_dependency.json"
+    
+    print("write build_dependency graph to " +out_file )
+    with open(out_file, "w") as dependency_file:
         list_graph = []
         for n in build_graph:
             for m in build_graph[n].out:
@@ -204,7 +218,7 @@ def main():
 
     # topological order of build_graph
     file_order = topological_order(build_graph)
-    print("write topological order to order.txt")
+    print("write topological order of build commands to "+ tmpdir +"order.txt")
     with open(tmpdir + "order.txt", "w") as order_file:
         for file_id in file_order:
             order_file.write(sorted_commands[file_id]['command'])
