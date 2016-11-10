@@ -154,7 +154,7 @@ def analyze_build_wrapper(cplusplus):
     compiler = os.getenv('ANALYZE_BUILD_CXX', 'c++') if cplusplus \
         else os.getenv('ANALYZE_BUILD_CC', 'cc')
     compilation = [compiler] + sys.argv[1:]
-    logging.info('execute compiler: %s', compilation)
+    logging.info('execute compiler: %s', " ".join(compilation))
     result = subprocess.call(compilation)
     # exit when it fails, ...
     if result or not os.getenv('ANALYZE_BUILD_CLANG'):
@@ -188,7 +188,10 @@ def analyze_build_wrapper(cplusplus):
                     logging.info(line.rstrip())
     except Exception:
         logging.exception("run analyzer inside compiler wrapper failed.")
-    return result
+    if current is not None:
+        return int(current["exit_code"])
+    else:
+        return result
 
 
 def analyzer_params(args):
