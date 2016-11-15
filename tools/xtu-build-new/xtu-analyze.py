@@ -36,6 +36,7 @@ parser.add_argument('--output-format', metavar='format',
 #parser.add_argument('--timeout', metavar='N', help='Timeout for analysis in seconds (default: %d)' % timeout, default=timeout)
 parser.add_argument('--reanalyze-xtu-visited', dest='without_visitedfns', action='store_true', help='Do not use a buildgraph file and visitedFunc.txt, reanalyze everything in random order with full parallelism (set -j for optimal results)')
 parser.add_argument('--no-xtu', dest='no_xtu', action='store_true', help='Do not use XTU at all, only do normal static analysis')
+parser.add_argument('--record-coverage', dest='record_coverage', action='store_true', help='Generate coverage information during analysis')
 mainargs = parser.parse_args()
 
 concurrent_threads = 0
@@ -75,6 +76,8 @@ if not mainargs.no_xtu :
     analyzer_params += [ '-analyzer-config', 'xtu-dir=' + os.path.abspath(mainargs.xtuindir)]
 if mainargs.without_visitedfns :
     analyzer_params += [ '-analyzer-config', 'reanalyze-xtu-visited=true' ]
+if mainargs.record_coverage :
+    analyzer_params += [ '-analyzer-config', 'record-coverage=' + mainargs.xtuoutdir ]
 analyzer_params += [ '-analyzer-stats' ]
 #analyzer_params += [ '-analyzer-output ' + mainargs.output_format ]
 passthru_analyzer_params = []
