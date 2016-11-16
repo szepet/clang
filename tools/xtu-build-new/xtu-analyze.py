@@ -6,6 +6,7 @@ import json
 import multiprocessing
 import os
 import re
+import shutil
 import signal
 import subprocess
 import string
@@ -13,10 +14,14 @@ import sys
 import threading
 import time
 import uuid
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'utils', 'analyzer'))
+import MergeCoverage
 
 #timeout = 86400
 analyser_output_formats = ['plist-multi-file', 'plist', 'html', 'plist-html', 'text']
 analyser_output_format = analyser_output_formats[0]
+gcov_outdir = 'gcov'
+gcov_tmpdir = gcov_outdir + '_tmp'
 
 parser = argparse.ArgumentParser(description='Executes 2nd pass of XTU analysis')
 parser.add_argument('-b', required=True, dest='buildlog', metavar='build.json', help='Use a JSON Compilation Database')
@@ -77,7 +82,10 @@ if not mainargs.no_xtu :
 if mainargs.without_visitedfns :
     analyzer_params += [ '-analyzer-config', 'reanalyze-xtu-visited=true' ]
 if mainargs.record_coverage :
-    analyzer_params += [ '-analyzer-config', 'record-coverage=' + mainargs.xtuoutdir ]
+    gcov_tmppath = os.path.abspath(os.path.join(mainargs.xtuoutdir, gcov_tmpdir))
+    gcov_finalpath = os.path.abspath(os.path.join(mainargs.xtuoutdir, gcov_outdir))
+    shutil.rmtree(gcov_tmppath, True)
+    #analyzer_params += [ '-analyzer-config', 'record-coverage=' + gcov_tmppath ]
 analyzer_params += [ '-analyzer-stats' ]
 #analyzer_params += [ '-analyzer-output ' + mainargs.output_format ]
 passthru_analyzer_params = []
@@ -144,9 +152,22 @@ def analyze(directory, command) :
     old_environ = os.environ
     old_workdir = os.getcwd()
     compiler, args = get_compiler_and_arguments(command)
+
+    last_src = None
+    for cmdpart in command.split() :
+        if src_pattern.match(cmdpart) :
+            last_src = cmdpart
+    tu_name = ''
+    if last_src :
+        tu_name += last_src.split(os.sep)[-1]
+        tu_name += '_' + re.sub(os.sep, "_", last_src)
+    tu_name += '_' + str(uuid.uuid4())
+
     os.environ.update(analyzer_env)
     os.environ['ANALYZE_BUILD_CC'] = compiler
     os.environ['ANALYZE_BUILD_CXX'] = compiler
+    if mainargs.record_coverage :
+        os.environ['ANALYZE_BUILD_PARAMETERS'] += ' -Xanalyzer -analyzer-config -Xanalyzer record-coverage=' + os.path.join(gcov_tmppath, tu_name)
     os.chdir(directory)
     analyze_cmd = os.path.join(analyze_path, 'analyze-cc') + ' ' + string.join(args, ' ')
     if mainargs.verbose :
@@ -163,12 +184,7 @@ def analyze(directory, command) :
         prefix = os.path.join(os.path.abspath(mainargs.xtuoutdir), "fails")
     else:
         prefix = os.path.join(os.path.abspath(mainargs.xtuoutdir), "passes")
-    last_arg = command.split()[-1]
-    if re.match(".+\.c(pp)?$", last_arg):
-        fname = re.sub("/", "_", last_arg)
-    else:
-        fname = uuid.uuid4()
-    with open(os.path.join(prefix, "%s.out" % fname), "w") as f:
+    with open(os.path.join(prefix, "%s.out" % tu_name), "w") as f:
         f.write("%s\n%s" % (analyze_cmd, out))
     os.chdir(old_workdir)
     os.environ.update(old_environ)
@@ -264,6 +280,10 @@ try:
     print 'Removing directory %s because it contains no reports' % os.path.abspath(mainargs.xtuoutdir)
 except OSError:
     pass
+
+if mainargs.record_coverage :
+    MergeCoverage.main(gcov_tmppath, gcov_finalpath)
+    shutil.rmtree(gcov_tmppath, True)
 
 assert concurrent_threads == 0
 concurrent_thread_times[0] += time.time() - concurrent_thread_last_clock

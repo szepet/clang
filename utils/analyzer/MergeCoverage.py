@@ -101,6 +101,10 @@ def process_tu(tu_path, output):
                 merge_gcov(gcov_in_path, gcov_out_path)
             else:
                 # No merging needed.
+                try:
+                    os.makedirs(os.sep.join(gcov_out_path.split(os.sep)[:-1]))
+                except OSError:
+                    pass
                 shutil.copyfile(gcov_in_path, gcov_out_path)
 
 
