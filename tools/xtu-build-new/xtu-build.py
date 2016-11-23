@@ -51,12 +51,15 @@ buildlog = json.load(buildlog_file)
 buildlog_file.close()
 
 src_pattern = re.compile('.*\.(C|c|cc|cpp|cxx|ii|m|mm)$', re.IGNORECASE)
+src_2_dir = {}
 src_2_cmd = {}
 src_order = []
 cmd_2_src = {}
 cmd_order = []
 for step in buildlog:
     if src_pattern.match(step['file']):
+        if step['file'] not in src_2_dir:
+            src_2_dir[step['file']] = step['directory']
         if step['file'] not in src_2_cmd:
             src_2_cmd[step['file']] = step['command']
             src_order.append(step['file'])
@@ -94,10 +97,10 @@ def generate_ast(source):
         print arch_command
     arch_output = subprocess.check_output(arch_command, shell=True)
     arch = arch_output[arch_output.rfind('@')+1:].strip()
-    ast_path = os.path.join(mainargs.xtuindir,
+    ast_path = os.path.abspath(os.path.join(mainargs.xtuindir,
                             os.path.join('/ast/' + arch,
                                          os.path.realpath(source)[1:] +
-                                         '.ast')[1:])
+                                         '.ast')[1:]))
     try:
         os.makedirs(os.path.dirname(ast_path))
     except OSError:
@@ -105,11 +108,12 @@ def generate_ast(source):
             pass
         else:
             raise
+    dir_command = 'cd ' + src_2_dir[source]
     ast_command = os.path.join(clang_path, 'clang') + ' -emit-ast ' + \
         string.join(args, ' ') + ' -w ' + source + ' -o ' + ast_path
     if mainargs.verbose:
-        print ast_command
-    subprocess.call(ast_command, shell=True)
+        print dir_command + " && " + ast_command
+    subprocess.call(dir_command + " && " + ast_command, shell=True)
 
 
 def map_functions(command):
