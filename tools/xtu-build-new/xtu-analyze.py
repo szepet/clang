@@ -231,12 +231,14 @@ def analyze(directory, command):
         ' ' + string.join(args, ' ')
     if mainargs.verbose:
         print analyze_cmd
+
     # Buffer output of subprocess and dump it out at the end, so that
     # the subprocess doesn't continue to write output after the user
     # sends SIGTERM
     po = subprocess.Popen(analyze_cmd, shell=True, stderr=subprocess.STDOUT,
                           stdout=subprocess.PIPE, universal_newlines=True)
     out, _ = po.communicate()
+    os.chdir(old_workdir)
     if mainargs.verbose:
         sys.stdout.write(out)
     if po.returncode:
