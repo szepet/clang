@@ -148,7 +148,7 @@ for param in analyzer_params:
     passthru_analyzer_params += [param]
 passthru_analyzer_params += ['--analyzer-output ' + mainargs.output_format]
 
-analyzer_env = {}
+analyzer_env = os.environ.copy()
 analyzer_env['ANALYZE_BUILD_CLANG'] = os.path.join(clang_path, 'clang')
 analyzer_env['ANALYZE_BUILD_REPORT_DIR'] = os.path.abspath(mainargs.xtuoutdir)
 analyzer_env['ANALYZE_BUILD_PARAMETERS'] = ' '.join(passthru_analyzer_params)
@@ -205,8 +205,6 @@ def get_compiler_and_arguments(cmd):
 
 
 def analyze(directory, command):
-    old_environ = os.environ
-    old_workdir = os.getcwd()
     compiler, args = get_compiler_and_arguments(command)
 
     last_src = None
@@ -216,17 +214,15 @@ def analyze(directory, command):
     tu_name = ''
     if last_src:
         tu_name += last_src.split(os.sep)[-1]
-        #tu_name += '_' + re.sub(os.sep, "_", last_src)
     tu_name += '_' + str(uuid.uuid4())
 
-    os.environ.update(analyzer_env)
-    os.environ['ANALYZE_BUILD_CC'] = compiler
-    os.environ['ANALYZE_BUILD_CXX'] = compiler
+    cmdenv = analyzer_env.copy()
+    cmdenv['ANALYZE_BUILD_CC'] = compiler
+    cmdenv['ANALYZE_BUILD_CXX'] = compiler
     if mainargs.record_coverage:
-        os.environ['ANALYZE_BUILD_PARAMETERS'] += \
+        cmdenv['ANALYZE_BUILD_PARAMETERS'] += \
             ' -Xanalyzer -analyzer-config -Xanalyzer record-coverage=' + \
             os.path.join(gcov_tmppath, tu_name)
-    os.chdir(directory)
     analyze_cmd = os.path.join(analyze_path, 'analyze-cc') + \
         ' ' + string.join(args, ' ')
     if mainargs.verbose:
@@ -236,9 +232,9 @@ def analyze(directory, command):
     # the subprocess doesn't continue to write output after the user
     # sends SIGTERM
     po = subprocess.Popen(analyze_cmd, shell=True, stderr=subprocess.STDOUT,
-                          stdout=subprocess.PIPE, universal_newlines=True)
+                          stdout=subprocess.PIPE, universal_newlines=True,
+                          cwd=directory, env=cmdenv)
     out, _ = po.communicate()
-    os.chdir(old_workdir)
     if mainargs.verbose:
         sys.stdout.write(out)
     if po.returncode:
@@ -247,8 +243,6 @@ def analyze(directory, command):
         prefix = os.path.join(os.path.abspath(mainargs.xtuoutdir), "passes")
     with open(os.path.join(prefix, "%s.out" % tu_name), "w") as f:
         f.write("%s\n%s" % (analyze_cmd, out))
-    os.chdir(old_workdir)
-    os.environ.update(old_environ)
 
 
 def analyze_work():
@@ -310,7 +304,7 @@ def analyze_work():
                         del dep[1][-1]
                         if len(dep[1]) == 0:
                             deps_2_remove.append(dep[0])
-                    i+=1
+                    i += 1
             for dep in deps_2_remove:
                 del dep_graph[dep]
             graph_lock.release()
