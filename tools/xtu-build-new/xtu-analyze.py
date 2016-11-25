@@ -231,13 +231,22 @@ def analyze(directory, command):
     # Buffer output of subprocess and dump it out at the end, so that
     # the subprocess doesn't continue to write output after the user
     # sends SIGTERM
-    po = subprocess.Popen(analyze_cmd, shell=True, stderr=subprocess.STDOUT,
-                          stdout=subprocess.PIPE, universal_newlines=True,
-                          cwd=directory, env=cmdenv)
-    out, _ = po.communicate()
+    runOK = True
+    out = '******* Error running command'
+    try:
+        po = subprocess.Popen(analyze_cmd, shell=True,
+                              stderr=subprocess.STDOUT,
+                              stdout=subprocess.PIPE,
+                              universal_newlines=True,
+                              cwd=directory,
+                              env=cmdenv)
+        out, _ = po.communicate()
+        runOK = not po.returncode
+    except OSError:
+        runOK = False
     if mainargs.verbose:
         sys.stdout.write(out)
-    if po.returncode:
+    if not runOK:
         prefix = os.path.join(os.path.abspath(mainargs.xtuoutdir), "fails")
     else:
         prefix = os.path.join(os.path.abspath(mainargs.xtuoutdir), "passes")
