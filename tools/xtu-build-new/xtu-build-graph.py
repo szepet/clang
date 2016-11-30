@@ -37,6 +37,42 @@ def remove_nodes(graph, nodes):
         graph.pop(node)
     nodes = []
 
+#print the approximated parallel threads at the same time
+def paralell(graph):
+    removable_edges = dict()
+    for node in graph:
+        removable_edges[node] = InOut(set(), set())
+
+    while graph:
+        no_dependency = [node for node in graph if len(graph[node].into) == 0]
+        if len(no_dependency) > 0:
+            #print len(no_dependency)
+            remove_nodes(graph, no_dependency)
+            continue
+        assert false
+
+
+def cyclic(graph):
+    visited = set()
+    path = [object()]
+    path_set = set(path)
+    stack = [iter(graph.keys())]
+    while stack:
+        for v in stack[-1]:
+            if v in path_set:
+                return True
+            elif v not in visited:
+                visited.add(v)
+                path.append(v)
+                path_set.add(v)
+                stack.append(iter(graph.get(v, ()).out))
+                break
+        else:
+            path_set.remove(path.pop())
+            stack.pop()
+    return False
+
+
 def remove_circles_dfs(graph):
     global visited, oldvisited
     path = [object()]
@@ -265,6 +301,11 @@ def main():
     }
     print time.clock() - t
 
+    #Some checks to make sure the algorithm is valid
+    assert not cyclic(build_graph)
+
+    build_graph_copy = copy.deepcopy(build_graph)
+    paralell(build_graph_copy)
 
     if args.out_file:
         out_file = args.out_file
