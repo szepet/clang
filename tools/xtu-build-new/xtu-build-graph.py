@@ -24,6 +24,11 @@ args = parser.parse_args()
 
 InOut = namedtuple("InOut", "into out")
 
+removable_edges2 = dict()
+visited = set()
+oldvisited = set()
+onstack = set()
+
 
 def remove_nodes(graph, nodes):
     for node in nodes:
@@ -31,6 +36,52 @@ def remove_nodes(graph, nodes):
             graph[pointed].into.remove(node)
         graph.pop(node)
     nodes = []
+
+def remove_circles_dfs(graph):
+    global visited, oldvisited
+    path = [object()]
+    path_set = set(path)
+    stack = [iter(graph.keys())]
+    while stack:
+        for v in stack[-1]:
+            if v in path_set:
+                removable_edges2[path[-1]].out.add(v)
+                removable_edges2[v].into.add(path[-1])
+            elif v not in visited:
+                visited.add(v)
+                path.append(v)
+                path_set.add(v)
+                stack.append(iter(graph.get(v, ()).out - oldvisited))
+                break
+        else:
+            path_set.remove(path.pop())
+            stack.pop()
+    oldvisited |= visited
+    visited = set()
+
+
+def dfs(graph, start):
+    global visited, oldvisited, onstack
+    if start in oldvisited:
+    	return
+    
+    stack = [start]
+    path = [object()]
+    path_set = set(path)
+    while stack:
+    	vertex = stack.pop()
+        print vertex
+        if vertex not in visited:
+            visited.add(vertex)
+            path.append(vertex)
+            path_set.add(vertex)
+
+        for node in (graph[vertex].out & path_set):
+        	removable_edges2[vertex].out.add(node)
+        	removable_edges2[node].into.add(vertex)
+        stack.extend(graph[vertex].out - visited - oldvisited)
+    oldvisited |= visited
+    visited = set()
 
 
 def eliminate_circles(graph):
@@ -197,6 +248,14 @@ def main():
     print time.clock() - t
     print("eliminate circles")
     t = time.clock()
+
+    for node in build_graph_copy.keys():
+    	removable_edges2[node] = InOut(set(), set())
+
+    for node in build_graph_copy.keys():
+    	remove_circles_dfs(build_graph_copy)
+
+    removable_edges = removable_edges2
 
     build_graph = {
                     key: InOut(build_graph[key].into -
