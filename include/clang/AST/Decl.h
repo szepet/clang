@@ -1833,8 +1833,6 @@ public:
     return getBody(Definition);
   }
 
-  const FunctionDecl *getXTUDefinition(CompilerInstance &CI) const;
-
   /// isThisDeclarationADefinition - Returns whether this specific
   /// declaration of the function is also a definition. This does not
   /// determine whether the function has been defined (e.g., in a
