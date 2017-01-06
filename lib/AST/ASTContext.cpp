@@ -1504,7 +1504,6 @@ ASTContext::getXTUDefinition(const FunctionDecl *FD, CompilerInstance &CI,
       FunctionAstUnitMap.find(MangledFnName);
   if (FnUnitCacheEntry == FunctionAstUnitMap.end()) {
     if (FunctionFileMap.empty()) {
-      // FIXME: Replace with LLVM file API.
       std::ifstream ExternalFnMapFile(ExternalFunctionMap);
       std::string FunctionName, FileName;
       while (ExternalFnMapFile >> FunctionName >> FileName)
