@@ -48,3 +48,20 @@ public:
     }
   };
 };
+
+namespace chns {
+int chf2(int x);
+
+class chcls {
+public:
+  int chf4(int x);
+};
+
+int chf3(int x) {
+  return chcls().chf4(x);
+}
+
+int chf1(int x) {
+  return chf2(x);
+}
+}

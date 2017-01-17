@@ -36,6 +36,10 @@ public:
   };
 };
 
+namespace chns {
+int chf1(int x);
+}
+
 int main() {
   clang_analyzer_eval(f(3) == 2); // expected-warning{{TRUE}}
   clang_analyzer_eval(f(4) == 3); // expected-warning{{TRUE}}
@@ -49,4 +53,6 @@ int main() {
   clang_analyzer_eval(mycls::fscl(1) == 7);                 // expected-warning{{TRUE}}
   clang_analyzer_eval(myns::embed_cls().fecl(1) == -6);     // expected-warning{{TRUE}}
   clang_analyzer_eval(mycls::embed_cls2().fecl2(0) == -11); // expected-warning{{TRUE}}
+
+  clang_analyzer_eval(chns::chf1(4) == 12); // expected-warning{{TRUE}}
 }
