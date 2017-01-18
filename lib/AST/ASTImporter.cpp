@@ -2674,15 +2674,27 @@ Decl *ASTNodeImporter::VisitTypedefNameDecl(TypedefNameDecl *D, bool IsAlias) {
       if (!FoundDecls[I]->isInIdentifierNamespace(IDNS))
         continue;
       if (TypedefNameDecl *FoundTypedef =
-            dyn_cast<TypedefNameDecl>(FoundDecls[I])) {
-        if (Importer.IsStructurallyEquivalent(D->getUnderlyingType(),
-                                            FoundTypedef->getUnderlyingType()))
-          return Importer.Imported(D, FoundTypedef);
+              dyn_cast<TypedefNameDecl>(FoundDecls[I])) {
+        if (Importer.IsStructurallyEquivalent(
+                D->getUnderlyingType(), FoundTypedef->getUnderlyingType())) {
+          QualType original_ut = D->getUnderlyingType();
+          QualType found_ut = FoundTypedef->getUnderlyingType();
+          // If the found definition is incomplete
+          // but it should be complete import
+          // FIXME: maybe this check should go into
+          // IsStructurallyEquivalent() function?
+          if (!original_ut->isIncompleteType() &&
+              found_ut->isIncompleteType()) {
+            continue;
+          } else {
+            return Importer.Imported(D, FoundTypedef);
+          }
+        }
       }
-      
+
       ConflictingDecls.push_back(FoundDecls[I]);
     }
-    
+
     if (!ConflictingDecls.empty()) {
       Name = Importer.HandleNameConflict(Name, DC, IDNS,
                                          ConflictingDecls.data(), 
@@ -2691,7 +2703,6 @@ Decl *ASTNodeImporter::VisitTypedefNameDecl(TypedefNameDecl *D, bool IsAlias) {
         return nullptr;
     }
   }
-  
   // Import the underlying type of this typedef;
   QualType T = Importer.Import(D->getUnderlyingType());
   if (T.isNull())
@@ -2716,7 +2727,6 @@ Decl *ASTNodeImporter::VisitTypedefNameDecl(TypedefNameDecl *D, bool IsAlias) {
   ToTypedef->setLexicalDeclContext(LexicalDC);
   Importer.Imported(D, ToTypedef);
   LexicalDC->addDeclInternal(ToTypedef);
-  
   return ToTypedef;
 }
 
