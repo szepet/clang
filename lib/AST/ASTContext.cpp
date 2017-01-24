@@ -52,6 +52,7 @@ using namespace clang;
 
 STATISTIC(NumGetXTUCalled, "The # of getXTUDefinition function called");
 STATISTIC(NumGetXTUSuccess, "The # of getXTUDefinition successfully return the requested function's body");
+STATISTIC(NumImportError, "The # of XTU function or its body import fails.");
 
 unsigned ASTContext::NumImplicitDefaultConstructors;
 unsigned ASTContext::NumImplicitDefaultConstructorsDeclared;
