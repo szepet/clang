@@ -172,7 +172,7 @@ def run_analyzer(opts, continuation=report_failure):
     cmd = get_arguments([opts['clang'], '--analyze'] + opts['direct_args'] +
                         opts['flags'] + [opts['file'], '-o', output()],
                         cwd)
-    logging.debug('exec command in %s: %s', cwd, ' '.join(cmd))
+    logging.info('KURVAFONTOS exec command in %s: %s', cwd, ' '.join(cmd))
     child = subprocess.Popen(cmd,
                              cwd=cwd,
                              universal_newlines=True,

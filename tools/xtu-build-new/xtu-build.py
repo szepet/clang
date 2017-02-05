@@ -212,6 +212,7 @@ with open(defined_fns_filename,  'r') as defined_fns_file:
             func_2_fileset[funcname].add(filename)
         func_2_file[funcname] = filename
         func_2_size[funcname] = funlen
+        print funlen
 
 extern_fns_filename = os.path.join(mainargs.xtuindir, 'externalFns.txt')
 with open(extern_fns_filename,  'r') as extern_fns_file:
@@ -224,7 +225,7 @@ extern_fns_map_filename = os.path.join(mainargs.xtuindir, 'externalFnMap.txt')
 with open(extern_fns_map_filename, 'w') as out_file:
     for func, fname in extfunc_2_file.items():
         if len(func_2_fileset[func]) == 1:
-            out_file.write('%s %s.ast\n' % (func, fname))
+            out_file.write('%s %s.ast %s\n' % (func, fname, func_2_size[func]))
 
 
 # Build dependency graph

@@ -1898,6 +1898,7 @@ private:
   FileASTUnitMapping FileASTUnitMap;
   FunctionAstUnitMapping FunctionAstUnitMap;
   FunctionFileMapping FunctionFileMap;
+  FunctionFileMapping FunNameFileMap;
   ASTUnitImporterMapping ASTUnitImporterMap;
   ImportMapping ImportMap;
   ASTImporter &getOrCreateASTImporter(ASTContext &From);
