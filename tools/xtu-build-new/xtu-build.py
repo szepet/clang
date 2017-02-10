@@ -196,7 +196,6 @@ else:
 # Generate externalFnMap.txt
 
 func_2_file = {}
-func_2_size = {}
 extfunc_2_file = {}
 func_2_fileset = {}
 
@@ -211,7 +210,6 @@ with open(defined_fns_filename,  'r') as defined_fns_file:
         else:
             func_2_fileset[funcname].add(filename)
         func_2_file[funcname] = filename
-        func_2_size[funcname] = funlen
 
 extern_fns_filename = os.path.join(mainargs.xtuindir, 'externalFns.txt')
 with open(extern_fns_filename,  'r') as extern_fns_file:
