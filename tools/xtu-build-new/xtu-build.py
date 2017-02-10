@@ -229,9 +229,9 @@ with open(extern_fns_map_filename, 'w') as out_file:
     for func, fname in extfunc_2_file.items():
         if len(func_2_fileset[func]) == 1:
             if func_2_shortname[func] in invalid_func_names:
-                out_file.write('%s %s %s.ast\n' % (func, func_2_shortname[func], fname))
-            else:
                 out_file.write('%s %s %s.ast\n' % (func, "__invalid__", fname))
+            else:
+                out_file.write('%s %s %s.ast\n' % (func, func_2_shortname[func], fname))
 
 
 # Build dependency graph
