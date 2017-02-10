@@ -157,7 +157,8 @@ void MapFunctionNamesConsumer::handleDecl(const Decl *D) {
         case UniqueExternalLinkage:
           if (SM.isInMainFile(Body->getLocStart()))
             DefinedFuncsStr << "!";
-          DefinedFuncsStr << FullName << " " << FileName << "\n";
+          DefinedFuncsStr << FullName << " " << FD->getNameAsString()
+                          << " " << FileName << "\n";
         default:
           break;
         }
