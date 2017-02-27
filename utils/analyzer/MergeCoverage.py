@@ -35,12 +35,15 @@ def is_num(val):
 
 
 def is_valid(line):
-    '''Check whether a list is a valid gcov line after join on colon.'''
-    if len(line) == 4:
-        return line[2].lower() in {"graph", "data", "runs", "programs",
-                                   "source"}
-    else:
-        return len(line) == 3
+    '''Check whether a list is a valid gcov line after join on colon.
+       Note that the source code might also containt colons, so the checks
+       on the length is not strict. This could be improved in the future.'''
+    if len(line) < 3:
+        return False
+    if line[2].lower() in {"graph", "data", "runs", "programs",
+                                   "source"}:
+        return len(line) == 4
+    return True
 
 
 def merge_gcov(from_gcov, to_gcov):
@@ -73,11 +76,15 @@ def merge_gcov(from_gcov, to_gcov):
                     sys.exit(1)
 
             if to_split[0] == '#####':
-                to_split[0] = from_split[0]
+                if from_split[0] != '-':
+                    to_split[0] = from_split[0]
             elif to_split[0] == '-':
-                assert from_split[0] == '-'
+                assert is_num(from_split[0]) or from_split[0] == '#####' \
+                       or from_split[0] == '-'
+                to_split[0] = from_split[0]
             elif is_num(to_split[0]):
-                assert is_num(from_split[0]) or from_split[0] == '#####'
+                assert is_num(from_split[0]) or from_split[0] == '#####' \
+                       or from_split[0] == '-'
                 if is_num(from_split[0]):
                     to_split[0] = str(int(to_split[0]) + int(from_split[0]))
 
