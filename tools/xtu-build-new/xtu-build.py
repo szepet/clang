@@ -204,7 +204,7 @@ invalid_func_names = set()
 defined_fns_filename = os.path.join(mainargs.xtuindir, 'definedFns.txt')
 with open(defined_fns_filename,  'r') as defined_fns_file:
     for line in defined_fns_file:
-        mangledname, fnname, filename = line.strip().split(' ')
+        mangledname, filename, fnname = line.strip().split(' ')
         if mangledname.startswith('!'):
             mangledname = mangledname[1:]  # main function
         if mangledname not in func_2_file.keys():
@@ -212,10 +212,10 @@ with open(defined_fns_filename,  'r') as defined_fns_file:
         else:
             func_2_fileset[mangledname].add(filename)
         func_2_file[mangledname] = filename
-        if fnname not in func_2_shortname.values():
-            func_2_shortname[mangledname] = fnname
-        else:
-            invalid_func_names.add(fnname)
+        #if fnname not in func_2_shortname.values():
+        #    func_2_shortname[mangledname] = fnname
+        #elif mangledname not in func_2_shortname.keys():
+        #    invalid_func_names.add(fnname)
 
 extern_fns_filename = os.path.join(mainargs.xtuindir, 'externalFns.txt')
 with open(extern_fns_filename,  'r') as extern_fns_file:
@@ -228,10 +228,10 @@ extern_fns_map_filename = os.path.join(mainargs.xtuindir, 'externalFnMap.txt')
 with open(extern_fns_map_filename, 'w') as out_file:
     for func, fname in extfunc_2_file.items():
         if len(func_2_fileset[func]) == 1:
-            if func_2_shortname[func] in invalid_func_names:
-                out_file.write('%s %s %s.ast\n' % (func, "__invalid__", fname))
-            else:
-                out_file.write('%s %s %s.ast\n' % (func, func_2_shortname[func], fname))
+#            if func_2_shortname[func] in invalid_func_names:
+#                out_file.write('%s %s %s.ast\n' % (func, "__invalid__", fname))
+#            else:
+             out_file.write('%s %s.ast\n' % (func, fname))
 
 
 # Build dependency graph

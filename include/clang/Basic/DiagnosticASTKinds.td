@@ -199,9 +199,8 @@ def note_odr_defined_here : Note<"also defined here">;
 def err_odr_function_type_inconsistent : Error<
   "external function %0 declared with incompatible types in different "
   "translation units (%1 vs. %2)">;
-def warn_odr_tag_type_inconsistent : Warning<
-  "type %0 has incompatible definitions in different translation units">,
-  InGroup<DiagGroup<"odr">>;
+def warn_odr_tag_type_inconsistent : Error<
+  "type %0 has incompatible definitions in different translation units">;
 def note_odr_tag_kind_here: Note<
   "%0 is a %select{struct|interface|union|class|enum}1 here">;
 def note_odr_field : Note<"field %0 has type %1 here">;

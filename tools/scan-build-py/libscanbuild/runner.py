@@ -91,7 +91,7 @@ def run(opts):
     try:
         command = opts.pop('command')
         command = command if isinstance(command, list) else decode(command)
-        logging.debug("Run analyzer against '%s'", command)
+        logging.info("Run analyzer against '%s'", command)
         opts.update(classify_parameters(command))
 
         return arch_check(opts)
@@ -176,6 +176,7 @@ def run_analyzer(opts, continuation=report_failure):
                             opts['direct_args'] + opts['flags'] +
                             [opts['file'], '-o', target()],
                             cwd)
+        print 'RUNNING ' + ' '.join(cmd) + '  in  ' + cwd
         output = run_command(cmd, cwd=cwd)
         return {'error_output': output, 'exit_code': 0}
     except subprocess.CalledProcessError as ex:

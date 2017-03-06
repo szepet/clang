@@ -1492,13 +1492,13 @@ ASTContext::getXTUDefinition(const FunctionDecl *FD, CompilerInstance &CI,
   NumGetXTUCalled++;
   assert(!FD->hasBody() && "FD has a definition in current translation unit!");
   bool LookUpByName = false;
-  if (!FD->getType()->getAs<FunctionProtoType>() && !getLangOpts().ImplicitInt)
+  if (!FD->getType()->getAs<FunctionProtoType>())
   {
     NumNotEvenMangle++;
     return nullptr; // Cannot even mangle that.
-  } else if(!FD->getType()->getAs<FunctionProtoType>())
-  {
-    LookUpByName = true;
+  //} else if(!FD->getType()->getAs<FunctionProtoType>())
+  //{
+  //  LookUpByName = true;
   }
 
   ImportMapping::const_iterator FoundImport = ImportMap.find(FD);
@@ -1527,11 +1527,12 @@ ASTContext::getXTUDefinition(const FunctionDecl *FD, CompilerInstance &CI,
     if (MangledNameFileMap.empty()) {
       std::string ExternalFunctionMap = (XTUDir + "/externalFnMap.txt").str();
       std::ifstream ExternalFnMapFile(ExternalFunctionMap);
-      std::string FileName, MangledName, FnName;
-      while (ExternalFnMapFile >> MangledName >> FnName >> FileName) {
+      std::string FileName, MangledName;
+      while (ExternalFnMapFile >> MangledName >> FileName) {
         MangledNameFileMap[MangledName] = (XTUDir + "/" + FileName).str();
-        if(FnName != "__invalid__")
-          FnNameFileMap[FnName] = (XTUDir + "/" + FileName).str();
+        //if(FnName != "__invalid__") {
+         // FnNameFileMap[FnName] = (XTUDir + "/" + FileName).str();
+        //}
       }
       ExternalFnMapFile.close();
     }
@@ -1569,15 +1570,18 @@ ASTContext::getXTUDefinition(const FunctionDecl *FD, CompilerInstance &CI,
   assert(&Unit->getFileManager() ==
          &Unit->getASTContext().getSourceManager().getFileManager());
   ASTImporter &Importer = getOrCreateASTImporter(Unit->getASTContext());
+  //Importer.getNonEquivalentDecls().clear();
   TranslationUnitDecl *TU = Unit->getASTContext().getTranslationUnitDecl();
   if (const FunctionDecl *ResultDecl =
             iterateContextDecls(TU, LookUpName, MangleCtx, LookUpByName)) {
     llvm::errs() << "Importing function " << LookUpName << " from "
                  << ASTFileName << "\n";
     // FIXME: Refactor const_cast
-    auto *ToDecl = cast<FunctionDecl>(
+    auto *ToDecl = cast_or_null<FunctionDecl>(
         Importer.Import(const_cast<FunctionDecl *>(ResultDecl)));
-    assert(ToDecl->hasBody());
+    if(!ToDecl)
+      return nullptr;
+//    assert(ToDecl->hasBody());
     ImportMap[FD] = ToDecl;
     NumGetXTUSuccess++;
     return ToDecl;
@@ -3744,7 +3748,7 @@ QualType ASTContext::getSubstTemplateTypeParmPackType(
                                                                ArgPack);
   Types.push_back(SubstParm);
   SubstTemplateTypeParmTypes.InsertNode(SubstParm, InsertPos);
-  return QualType(SubstParm, 0);  
+  return QualType(SubstParm, 0);
 }
 
 /// \brief Retrieve the template type parameter type for a template

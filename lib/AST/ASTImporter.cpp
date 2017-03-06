@@ -25,6 +25,7 @@
 #include <deque>
 
 namespace clang {
+    std::string importingfunctionname;
   class ASTNodeImporter : public TypeVisitor<ASTNodeImporter, QualType>,
                           public DeclVisitor<ASTNodeImporter, Decl *>,
                           public StmtVisitor<ASTNodeImporter, Stmt *> {
@@ -94,7 +95,6 @@ namespace clang {
 
     typedef DesignatedInitExpr::Designator Designator;
     Designator ImportDesignator(const Designator &D);
-
                         
     /// \brief What we should import from the definition.
     enum ImportDefinitionKind { 
@@ -136,7 +136,7 @@ namespace clang {
                            bool Complain = true);
     bool IsStructuralMatch(VarDecl *FromVar, VarDecl *ToVar,
                            bool Complain = true);
-    bool IsStructuralMatch(EnumDecl *FromEnum, EnumDecl *ToRecord);
+    bool IsStructuralMatch(EnumDecl *FromEnum, EnumDecl *ToRecord, bool Complain = true);
     bool IsStructuralMatch(EnumConstantDecl *FromEC, EnumConstantDecl *ToEC);
     bool IsStructuralMatch(ClassTemplateDecl *From, ClassTemplateDecl *To);
     bool IsStructuralMatch(VarTemplateDecl *From, VarTemplateDecl *To);
@@ -280,7 +280,7 @@ namespace clang {
     Expr *VisitCXXNamedCastExpr(CXXNamedCastExpr *E);
     Expr *VisitSubstNonTypeTemplateParmExpr(SubstNonTypeTemplateParmExpr *E);
 
-
+     std::string enumname;
     template<typename IIter, typename OIter>
     void ImportArray(IIter Ibegin, IIter Iend, OIter Obegin) {
       typedef typename std::remove_reference<decltype(*Obegin)>::type ItemT;
@@ -581,6 +581,8 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   
   llvm_unreachable("Invalid template argument kind");
 }
+
+std::string importedRecordDecl;
 
 /// \brief Determine structural equivalence for the common part of array 
 /// types.
@@ -1122,6 +1124,13 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   // For anonymous structs/unions, match up the anonymous struct/union type
   // declarations directly, so that we don't go off searching for anonymous
   // types
+  int b;
+  if(importingfunctionname == "strtol" && Field1->getNameAsString() == "type")
+  {
+    b++;
+    Field1->getType()->dump();
+    Field2->getType()->dump();
+  }
   if (Field1->isAnonymousStructOrUnion() &&
       Field2->isAnonymousStructOrUnion()) {
     RecordDecl *D1 = Field1->getType()->castAs<RecordType>()->getDecl();
@@ -1134,6 +1143,11 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   IdentifierInfo *Name2 = Field2->getIdentifier();
   if (!::IsStructurallyEquivalent(Name1, Name2))
     return false;
+  int a;
+  if(Field1->getType().getAsString() == "curl_socket_callback")
+  {
+    a++;
+  }
 
   if (!IsStructurallyEquivalent(Context,
                                 Field1->getType(), Field2->getType())) {
@@ -1144,7 +1158,17 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
         << Field2->getDeclName() << Field2->getType();
       Context.Diag1(Field1->getLocation(), diag::note_odr_field)
         << Field1->getDeclName() << Field1->getType();
+      llvm::errs() << "FIGYI:   " <<diag::note_odr_field << " " <<Field1->getDeclName().getAsString() << " " << Field1->getType().getAsString() <<" \n";
+      Field1->getType().dump();
+      Field2->getType().dump();
     }
+    //llvm::errs() << "YOLOKA " << Field1->getType().getAsString() << "\n";
+    /*if(Field1->getType().getAsString() == "struct Curl_share *")
+    {
+      Field1->getType().dump();
+      Field2->getType().dump();
+
+    }*/
     return false;
   }
   
@@ -1221,10 +1245,21 @@ static Optional<unsigned> findUntaggedStructOrUnionIndex(RecordDecl *Anon) {
     // If the field looks like this:
     // struct { ... } A;
     QualType FieldType = F->getType();
+    //llvm::errs() << "Fieldtype DUMP\n";
+    //FieldType->dump();
+    if(const auto* ET =dyn_cast<ElaboratedType>(FieldType))
+    {
+      //llvm::errs() << "getNamedType DUMP\n";
+      //ET->getNamedType()->dump();
+      FieldType = ET->getNamedType();
+    }
     if (const auto *RecType = dyn_cast<RecordType>(FieldType)) {
       const RecordDecl *RecDecl = RecType->getDecl();
+     // llvm::errs() << "RecDecl DUMP\n";
+     // FieldType->dump();
       if (RecDecl->getDeclContext() == Owner &&
           !RecDecl->getIdentifier()) {
+        llvm::errs() << "IZGALMAAAS";
         if (Context.hasSameType(FieldType, AnonTy))
           break;
         ++Index;
@@ -1249,7 +1284,7 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     return false;
   }
 
-  if (D1->isAnonymousStructOrUnion() && D2->isAnonymousStructOrUnion()) {
+  if (D1->getName().empty() && D2->getName().empty()) {
     // If both anonymous structs/unions are in a record context, make sure
     // they occur in the same location in the context records.
     if (Optional<unsigned> Index1 = findUntaggedStructOrUnionIndex(D1)) {
@@ -1377,7 +1412,7 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     }
     
     if (!IsStructurallyEquivalent(Context, *Field1, *Field2))
-      return false;    
+      return false;
   }
   
   if (Field2 != Field2End) {
@@ -1403,7 +1438,7 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
                                   EC1End = D1->enumerator_end();
        EC1 != EC1End; ++EC1, ++EC2) {
     if (EC2 == EC2End) {
-      if (Context.Complain) {
+      if (/*Context.Complain*/false) {
         Context.Diag2(D2->getLocation(), diag::warn_odr_tag_type_inconsistent)
           << Context.C2.getTypeDeclType(D2);
         Context.Diag1(EC1->getLocation(), diag::note_odr_enumerator)
@@ -1562,18 +1597,92 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
 static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
                                      Decl *D1, Decl *D2) {
   // FIXME: Check for known structural equivalences via a callback of some sort.
-  
+  if(auto D = dyn_cast_or_null<NamedDecl>(D1)) {
+    if (D->getNameAsString() == "Curl_share")
+    {
+     // D1->dump();
+     // D2->dump();
+    }
+  }
   // Check whether we already know that these two declarations are not
   // structurally equivalent.
   if (Context.NonEquivalentDecls.count(std::make_pair(D1->getCanonicalDecl(),
-                                                      D2->getCanonicalDecl())))
+                                                      D2->getCanonicalDecl()))) {
+    if(auto D = dyn_cast_or_null<NamedDecl>(D1)) {
+      //llvm::errs() << "CASE1\n";
+      if (importingfunctionname == "Curl_free_request_state")
+      {
+        /*llvm::errs() << "\nCASE1";
+        llvm::errs()<<"\nD1:\n";
+        D1->getCanonicalDecl()->dump();
+        D1->dump();
+        D1->getCanonicalDecl()->dump();
+        llvm::errs()<<"\nD2:\n";
+        D2->getCanonicalDecl()->dump();
+        D2->dump();*/
+      }
+    }
     return false;
-  
+  }
+
   // Determine whether we've already produced a tentative equivalence for D1.
   Decl *&EquivToD1 = Context.TentativeEquivalences[D1->getCanonicalDecl()];
-  if (EquivToD1)
+  int a =1 ;
+  if (!EquivToD1){
+    if(auto D = dyn_cast_or_null<RecordDecl>(D2)) {
+     /* if (importingfunctionname == "Curl_free_request_state" && D->getNameAsString() == "Curl_easy")
+      {
+        a++;
+        llvm::errs() << "\nINIT CASE";
+        llvm::errs()<<"\nD1:\n";
+        D1->getCanonicalDecl()->dump();
+        D1->dump();
+        llvm::errs()<<"\nD2:\n";
+        D2->getCanonicalDecl()->dump();
+        D2->dump();
+      }*/
+    }
+  }
+
+  if (EquivToD1) {
+    if(auto D = dyn_cast_or_null<RecordDecl>(D2)) {
+      //llvm::errs() << "CASE2\n";
+      /*if (D->getNameAsString() == "Curl_easy" && EquivToD1 != D2->getCanonicalDecl() && importingfunctionname == "Curl_free_request_state")
+      {
+        llvm::errs() << "\nCASE2";
+        if(D->getCanonicalDecl()->getDefinition())
+          D->getCanonicalDecl()->getDefinition()->dump();
+        llvm::errs()<<"\nD1:\n";
+        D1->getCanonicalDecl()->dump();
+        D1->dump();
+        llvm::errs()<<"\nD2:\n";
+        D2->getCanonicalDecl()->dump();
+        D2->dump();
+        llvm::errs()<<"\nEquivToD1:\n";
+        EquivToD1->getCanonicalDecl()->dump();
+        EquivToD1->dump();
+      }*/
+    }
+    if(auto D = dyn_cast_or_null<EnumDecl>(D2)) {
+      //llvm::errs() << "CASE2\n";
+      if (D->getNameAsString() == "Curl_HttpReq" && EquivToD1 != D2->getCanonicalDecl() && importingfunctionname == "Curl_free_request_state")
+      {
+        /*llvm::errs() << "\nCASE2";
+        if(D->getCanonicalDecl()->getDefinition())
+          D->getCanonicalDecl()->getDefinition()->dump();
+        llvm::errs()<<"\nD1:\n";
+        D1->getCanonicalDecl()->dump();
+        D1->dump();
+        llvm::errs()<<"\nD2:\n";
+        D2->getCanonicalDecl()->dump();
+        D2->dump();
+        llvm::errs()<<"\nEquivToD1:\n";
+        EquivToD1->getCanonicalDecl()->dump();
+        EquivToD1->dump();*/
+      }
+    }
     return EquivToD1 == D2->getCanonicalDecl();
-  
+  }
   // Produce a tentative equivalence D1 <-> D2, which will be checked later.
   EquivToD1 = D2->getCanonicalDecl();
   Context.DeclsToCheck.push_back(D1->getCanonicalDecl());
@@ -1620,13 +1729,14 @@ bool StructuralEquivalenceContext::Finish() {
           Name2 = Record2->getTypedefNameForAnonDecl()->getIdentifier();
         if (!::IsStructurallyEquivalent(Name1, Name2) ||
             !::IsStructurallyEquivalent(*this, Record1, Record2))
-          Equivalent = false;
+          Equivalent = false; //YOLO
       } else {
         // Record/non-record mismatch.
         Equivalent = false;
       }
     } else if (EnumDecl *Enum1 = dyn_cast<EnumDecl>(D1)) {
       if (EnumDecl *Enum2 = dyn_cast<EnumDecl>(D2)) {
+
         // Check for equivalent enum names.
         IdentifierInfo *Name1 = Enum1->getIdentifier();
         if (!Name1 && Enum1->getTypedefNameForAnonDecl())
@@ -1635,8 +1745,12 @@ bool StructuralEquivalenceContext::Finish() {
         if (!Name2 && Enum2->getTypedefNameForAnonDecl())
           Name2 = Enum2->getTypedefNameForAnonDecl()->getIdentifier();
         if (!::IsStructurallyEquivalent(Name1, Name2) ||
-            !::IsStructurallyEquivalent(*this, Enum1, Enum2))
+            !::IsStructurallyEquivalent(*this, Enum1, Enum2)) {
+          llvm::errs() << "\nENUMS LEL\n";
+          //Enum1->dump();
+          //Enum2->dump();
           Equivalent = false;
+        }
       } else {
         // Enum/non-enum mismatch
         Equivalent = false;
@@ -1699,6 +1813,7 @@ bool StructuralEquivalenceContext::Finish() {
       // know about it).
       NonEquivalentDecls.insert(std::make_pair(D1->getCanonicalDecl(),
                                                D2->getCanonicalDecl()));
+      TentativeEquivalences.erase(D1);
       return true;
     }
     // FIXME: Check other declaration kinds!
@@ -2292,9 +2407,14 @@ void ASTNodeImporter::ImportDeclContext(DeclContext *FromDC, bool ForceImport) {
     Importer.ImportContext(FromDC);
     return;
   }
-  
-  for (auto *From : FromDC->decls())
+
+  for (auto *From : FromDC->decls()) {
+    if (enumname == "Barnanemmeleg") {
+      llvm::errs() << "DeclsDump\n";
+      //From->dump();
+    }
     Importer.Import(From);
+  }
 }
 
 bool ASTNodeImporter::ImportDefinition(RecordDecl *From, RecordDecl *To, 
@@ -2427,25 +2547,43 @@ bool ASTNodeImporter::ImportDefinition(EnumDecl *From, EnumDecl *To,
       ImportDeclContext(From, /*ForceImport=*/true);
     return false;
   }
-  
+  /*if(To->getNameAsString() == "Barnanemmeleg") {
+    llvm::errs() << "Dump5:\n";
+    To->dump();
+  }*/
   To->startDefinition();
 
   QualType T = Importer.Import(Importer.getFromContext().getTypeDeclType(From));
   if (T.isNull())
     return true;
-  
+  /*if(To->getNameAsString() == "Barnanemmeleg") {
+    llvm::errs() << "Dump6:\n";
+    To->dump();
+  }*/
   QualType ToPromotionType = Importer.Import(From->getPromotionType());
   if (ToPromotionType.isNull())
     return true;
-
+  /*if(To->getNameAsString() == "Barnanemmeleg") {
+    llvm::errs() << "Dump7:\n";
+    To->dump();
+  }*/
+  enumname = To->getNameAsString();
   if (shouldForceImportDeclContext(Kind))
     ImportDeclContext(From, /*ForceImport=*/true);
-  
+  enumname = "";
+  /*if(To->getNameAsString() == "Barnanemmeleg") {
+    llvm::errs() << "Dump8:\n";
+    To->dump();
+  }*/
   // FIXME: we might need to merge the number of positive or negative bits
   // if the enumerator lists don't match.
   To->completeDefinition(T, ToPromotionType,
                          From->getNumPositiveBits(),
                          From->getNumNegativeBits());
+  /*if(To->getNameAsString() == "Barnanemmeleg") {
+    llvm::errs() << "Dump9:\n";
+    To->dump();
+  }*/
   return false;
 }
 
@@ -2608,10 +2746,10 @@ bool ASTNodeImporter::IsStructuralMatch(VarDecl *FromVar, VarDecl *ToVar,
   return Ctx.IsStructurallyEquivalent(FromVar, ToVar);
 }
 
-bool ASTNodeImporter::IsStructuralMatch(EnumDecl *FromEnum, EnumDecl *ToEnum) {
+bool ASTNodeImporter::IsStructuralMatch(EnumDecl *FromEnum, EnumDecl *ToEnum, bool Complain) {
   StructuralEquivalenceContext Ctx(Importer.getFromContext(),
                                    Importer.getToContext(),
-                                   Importer.getNonEquivalentDecls());
+                                   Importer.getNonEquivalentDecls(), false, Complain);
   return Ctx.IsStructurallyEquivalent(FromEnum, ToEnum);
 }
 
@@ -2908,14 +3046,20 @@ Decl *ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
   DeclarationName Name;
   SourceLocation Loc;
   NamedDecl *ToD;
+  int a = 0;
+  if(D->getNameAsString() == "Barnanemmeleg" /*&& importedRecordDecl == "UserDefined"*/) {
+    a++;
+  }
+
   if (ImportDeclParts(D, DC, LexicalDC, Name, ToD, Loc))
     return nullptr;
   if (ToD)
     return ToD;
-
+  EnumDecl* PrevDecl = nullptr;
   // Figure out what enum name we're looking for.
   unsigned IDNS = Decl::IDNS_Tag;
   DeclarationName SearchName = Name;
+  llvm::errs() << "importing enum: " << SearchName << "\n";
   if (!SearchName && D->getTypedefNameForAnonDecl()) {
     SearchName = Importer.Import(D->getTypedefNameForAnonDecl()->getDeclName());
     IDNS = Decl::IDNS_Ordinary;
@@ -2926,11 +3070,11 @@ Decl *ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
   if (!DC->isFunctionOrMethod() && SearchName) {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
     SmallVector<NamedDecl *, 2> FoundDecls;
-    DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
+    DC->getRedeclContext()->localUncachedLookup(SearchName, FoundDecls);
     for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
       if (!FoundDecls[I]->isInIdentifierNamespace(IDNS))
         continue;
-      
+
       Decl *Found = FoundDecls[I];
       if (TypedefNameDecl *Typedef = dyn_cast<TypedefNameDecl>(Found)) {
         if (const TagType *Tag = Typedef->getUnderlyingType()->getAs<TagType>())
@@ -2940,8 +3084,10 @@ Decl *ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
       if (EnumDecl *FoundEnum = dyn_cast<EnumDecl>(Found)) {
         if (IsStructuralMatch(D, FoundEnum))
           return Importer.Imported(D, FoundEnum);
+        if(D->getPreviousDecl())
+          PrevDecl = FoundEnum->getCanonicalDecl();
       }
-      
+
       ConflictingDecls.push_back(FoundDecls[I]);
     }
     
@@ -2955,25 +3101,46 @@ Decl *ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
   // Create the enum declaration.
   EnumDecl *D2 = EnumDecl::Create(Importer.getToContext(), DC,
                                   Importer.Import(D->getLocStart()),
-                                  Loc, Name.getAsIdentifierInfo(), nullptr,
+                                  Loc, Name.getAsIdentifierInfo(), /*nullptr,*/PrevDecl,
                                   D->isScoped(), D->isScopedUsingClassTag(),
                                   D->isFixed());
+
+  /*if(D2->getNameAsString() == "Barnanemmeleg") {
+    llvm::errs() << "Dump1:\n";
+    D2->dump();
+  }*/
   // Import the qualifier, if any.
   D2->setQualifierInfo(Importer.Import(D->getQualifierLoc()));
   D2->setAccess(D->getAccess());
   D2->setLexicalDeclContext(LexicalDC);
   Importer.Imported(D, D2);
   LexicalDC->addDeclInternal(D2);
-
+  /*if(D2->getNameAsString() == "Barnanemmeleg") {
+    llvm::errs() << "Dump2:\n";
+    D2->dump();
+  }*/
   // Import the integer type.
   QualType ToIntegerType = Importer.Import(D->getIntegerType());
   if (ToIntegerType.isNull())
     return nullptr;
   D2->setIntegerType(ToIntegerType);
-  
+
+  /*if(D2->getNameAsString() == "Barnanemmeleg") {
+    llvm::errs() << "Dump3:\n";
+    D2->dump();
+  }*/
   // Import the definition
   if (D->isCompleteDefinition() && ImportDefinition(D, D2))
     return nullptr;
+
+  /*if(D2->getNameAsString() == "Barnanemmeleg") {
+    llvm::errs() << "\nREQ VAN MAR:\n";
+    llvm::errs() << "D:\n";
+    D->dump();
+    llvm::errs() << "D2:\n";
+    D2->dump();
+  }*/
+
 
   return D2;
 }
@@ -2982,6 +3149,18 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
   // If this record has a definition in the translation unit we're coming from,
   // but this particular declaration is not that definition, import the
   // definition and map to that.
+
+  int a = 0;
+
+  if(importingfunctionname == "Curl_resolv_unlock" && D->getNameAsString() == "Curl_share")
+  {
+    a++;
+  }
+  if(D->getNameAsString()=="Curl_easy")
+  {
+    a++;
+  }
+  importedRecordDecl = D->getNameAsString();
   TagDecl *Definition = D->getDefinition();
   if (Definition && Definition != D) {
     Decl *ImportedDef = Importer.Import(Definition);
@@ -3009,13 +3188,15 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
     IDNS |= Decl::IDNS_Ordinary;
   } else if (Importer.getToContext().getLangOpts().CPlusPlus)
     IDNS |= Decl::IDNS_Ordinary;
+  llvm::errs() << "importing record: " << SearchName << "\n";
 
   // We may already have a record of the same name; try to find and match it.
   RecordDecl *AdoptDecl = nullptr;
+  RecordDecl *PrevDecl = nullptr;
   if (!DC->isFunctionOrMethod()) {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
     SmallVector<NamedDecl *, 2> FoundDecls;
-    DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
+    DC->getRedeclContext()->localUncachedLookup(SearchName, FoundDecls);
     for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
       if (!FoundDecls[I]->isInIdentifierNamespace(IDNS))
         continue;
@@ -3025,16 +3206,37 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
         if (const TagType *Tag = Typedef->getUnderlyingType()->getAs<TagType>())
           Found = Tag->getDecl();
       }
-      
+      int a = 0;
       if (RecordDecl *FoundRecord = dyn_cast<RecordDecl>(Found)) {
-        if (D->isAnonymousStructOrUnion() && 
-            FoundRecord->isAnonymousStructOrUnion()) {
+        //FoundRecord->dump();
+        /*if(!SearchName)
+        {
+          Optional<unsigned> Index1 = findUntaggedStructOrUnionIndex(D);
+          Optional<unsigned> Index2 = findUntaggedStructOrUnionIndex(FoundRecord);
+          llvm::errs() << "ANONOK\n";
+          D->dump();
+          FoundRecord->dump();
+          if(Index1) llvm::errs() << "Index1" << *Index1 << "\n";
+          if(Index2) llvm::errs() << "Index2" << *Index2 << "\n";
+          if (importingfunctionname == "easy_perform")
+          {
+            a++;
+          }
+          if (!Index1 || !Index2 || *Index1 != *Index2)
+            continue;
+        }*/
+        if (!SearchName) {
           // If both anonymous structs/unions are in a record context, make sure
           // they occur in the same location in the context records.
+
           if (Optional<unsigned> Index1
               = findUntaggedStructOrUnionIndex(D)) {
             if (Optional<unsigned> Index2 =
                     findUntaggedStructOrUnionIndex(FoundRecord)) {
+              if (importingfunctionname == "easy_perform")
+              {
+                a++;
+              }
               if (*Index1 != *Index2)
                 continue;
             }
@@ -3042,11 +3244,29 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
         }
 
         if (RecordDecl *FoundDef = FoundRecord->getDefinition()) {
+          if(SearchName.getAsString() == "va_stack_t") {
+            llvm::errs() << "SEARCHNAME: " << SearchName.getAsString() << "\n";
+          }
+          if (importingfunctionname == "easy_perform")
+          {
+            a++;
+            if(SearchName){
+              a++;
+              llvm::errs() << SearchName.getAsString();
+            }
+            if(D->isAnonymousStructOrUnion())
+            {
+              a++;
+            }
+            //D->dump();
+            //FoundDef->dump();
+          }
           if ((SearchName && !D->isCompleteDefinition())
               || (D->isCompleteDefinition() &&
                   D->isAnonymousStructOrUnion()
                     == FoundDef->isAnonymousStructOrUnion() &&
-                  IsStructuralMatch(D, FoundDef))) {
+                  IsStructuralMatch(D, FoundDef,true/*false*/))) { //GOND
+
             // The record types structurally match, or the "from" translation
             // unit only had a forward declaration anyway; call it the same
             // function.
@@ -3076,6 +3296,14 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
         } else if (!SearchName) {
           continue;
         }
+          //if(SearchName)
+          PrevDecl = cast<RecordDecl>(FoundRecord->getMostRecentDecl());
+          llvm::errs() << FoundRecord->getNameAsString() <<" FoundRecord NonCanonical: " <<FoundRecord << " Prev: " << FoundRecord->getPreviousDecl() <<"\n";
+          /*if( FoundRecord->getNameAsString() == "Curl_multi")
+          {
+            FoundRecord->dump();
+            FoundRecord->getCanonicalDecl()->dump();
+          }*/
       }
       
       ConflictingDecls.push_back(FoundDecls[I]);
@@ -3086,10 +3314,14 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
                                          ConflictingDecls.data(), 
                                          ConflictingDecls.size());
     }
+
   }
   
   // Create the record declaration.
   RecordDecl *D2 = AdoptDecl;
+  if(AdoptDecl == PrevDecl)
+    PrevDecl = nullptr;
+
   SourceLocation StartLoc = Importer.Import(D->getLocStart());
   if (!D2) {
     CXXRecordDecl *D2CXX = nullptr;
@@ -3124,16 +3356,43 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
       D2 = D2CXX;
       D2->setAccess(D->getAccess());
     } else {
+      /*if(!D->getPreviousDecl())
+        PrevDecl = nullptr;
+
+      if(D->getPreviousDecl())
+      {
+        D->dump();
+      }*/
       D2 = RecordDecl::Create(Importer.getToContext(), D->getTagKind(),
-                              DC, StartLoc, Loc, Name.getAsIdentifierInfo());
+                              DC, StartLoc, Loc, Name.getAsIdentifierInfo(),PrevDecl);
+      /*auto PrevDecl2 = PrevDecl;
+      PrevDecl = nullptr;*/
+      /*if(D->getPreviousDecl() != D->getCanonicalDecl())
+        PrevDecl = dyn_cast_or_null<RecordDecl>(Importer.Import(D->getPreviousDecl()));
+      else if(D->getPreviousDecl()){
+        PrevDecl = D2;
+      }*/
+      /*if (D->getPreviousDecl() && D->getPreviousDecl() != D->getPreviousDecl()->getPreviousDecl()) {
+        auto *Recent = const_cast<RecordDecl *>(
+                D2->getMostRecentDecl());
+        //D2->setPreviousDecl(Recent);
+      } else if(D->getPreviousDecl())
+      {
+        PrevDecl = PrevDecl2;
+      }
+      D2->setPreviousDecl(PrevDecl2);*/
     }
     
     D2->setQualifierInfo(Importer.Import(D->getQualifierLoc()));
     D2->setLexicalDeclContext(LexicalDC);
     LexicalDC->addDeclInternal(D2);
     D2->setImplicit(D->isImplicit());
-    if (D->isAnonymousStructOrUnion())
+    if (D->isAnonymousStructOrUnion()) {
       D2->setAnonymousStructOrUnion(true);
+      llvm::errs() << "ANONIM:\n";
+      D->dump();
+    }
+
   }
   
   Importer.Imported(D, D2);
@@ -3173,6 +3432,18 @@ Decl *ASTNodeImporter::VisitEnumConstantDecl(EnumConstantDecl *D) {
 
       if (EnumConstantDecl *FoundEnumConstant
             = dyn_cast<EnumConstantDecl>(FoundDecls[I])) {
+        if(FoundEnumConstant->getNameAsString() == "HTTPREQ_GET")
+        {
+          llvm::errs() << "FoundEnumConst:\n";
+
+        }
+        EnumDecl* FoundDC = cast<EnumDecl>(FoundEnumConstant->getDeclContext());
+        EnumDecl* FromDC = cast<EnumDecl>(D->getDeclContext());;
+        if(!IsStructuralMatch(FromDC,FoundDC,false))
+        {
+          continue;
+        }
+
         if (IsStructuralMatch(D, FoundEnumConstant))
           return Importer.Imported(D, FoundEnumConstant);
       }
@@ -3214,7 +3485,8 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
     return nullptr;
   if (ToD)
     return ToD;
-
+  importingfunctionname = Name.getAsString();
+  llvm::errs() << "importingname: " << importingfunctionname << '\n';
   const FunctionDecl *FoundWithoutBody = nullptr;
 
   // Try to find a function in our own ("to") context with the same name, same
@@ -3231,7 +3503,12 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
       if (auto *FoundFunction = dyn_cast<FunctionDecl>(FoundDecls[I])) {
         if (FoundFunction->hasExternalFormalLinkage() &&
             D->hasExternalFormalLinkage()) {
-          if (Importer.IsStructurallyEquivalent(D->getType(), 
+          if(Name.getAsString() == "Curl_free_request_state")
+          {
+            I++;
+            I--;
+          }
+          if (Importer.IsStructurallyEquivalent(D->getType(),
                                                 FoundFunction->getType())) {
             // FIXME: Actually try to merge the body and other attributes.
             const FunctionDecl *FromBodyDecl = nullptr;
@@ -3254,6 +3531,8 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
           // Complain about inconsistent function types.
           Importer.ToDiag(Loc, diag::err_odr_function_type_inconsistent)
             << Name << D->getType() << FoundFunction->getType();
+          //D->getType().dump();
+          //FoundFunction->getType().dump();
           Importer.ToDiag(FoundFunction->getLocation(), 
                           diag::note_odr_value_here)
             << FoundFunction->getType();
@@ -3461,21 +3740,50 @@ Decl *ASTNodeImporter::VisitFieldDecl(FieldDecl *D) {
     return nullptr;
   if (ToD)
     return ToD;
-
+  int a = 0;
+  if(D->getNameAsString() == "main" && importingfunctionname == "Curl_ftp_parselist_data_free")
+  {
+    a++;
+    llvm::errs()<<"HTTPREQ \n";
+    //D->dump();
+  }
+  llvm::errs() << "importing field: " << Name << "\n";
   // Determine whether we've already imported this field. 
   SmallVector<NamedDecl *, 2> FoundDecls;
   DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
-  for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
+  for (unsigned long I = 0, N = FoundDecls.size(); I != N; ++I) {
     if (FieldDecl *FoundField = dyn_cast<FieldDecl>(FoundDecls[I])) {
       // For anonymous fields, match up by index.
-      if (!Name && getFieldIndex(D) != getFieldIndex(FoundField))
+      int a;
+      if(FoundField->getNameAsString() == "type" && importingfunctionname == "strtol")
+      {
+        a ++;
+      }
+      if(!IsStructuralMatch(cast<RecordDecl>(D->getDeclContext()),cast<RecordDecl>(FoundField->getDeclContext()),false))
+      {
         continue;
+      }
+      llvm::errs() << "Name: " << Name << "\n";
+      if (!Name && getFieldIndex(D) != getFieldIndex(FoundField) )
+        continue;
+
 
       if (Importer.IsStructurallyEquivalent(D->getType(), 
                                             FoundField->getType())) {
         Importer.Imported(D, FoundField);
         return FoundField;
       }
+      llvm::errs() << "\nFieldDumps\n";
+      llvm::errs() << "\nFoundField:\n";
+      FoundField->dump();
+      llvm::errs() << "\nFoundField context:\n";
+      cast<RecordDecl>(FoundField->getDeclContext())->dump();
+      llvm::errs() << "\nD:\n";
+      D->dump();
+      llvm::errs() << "\nD context:\n";
+      cast<RecordDecl>(D->getDeclContext())->dump();
+      llvm::errs() << "\nDC:\n";
+      cast<RecordDecl>(DC)->dump();
       
       Importer.ToDiag(Loc, diag::err_odr_field_type_inconsistent)
         << Name << D->getType() << FoundField->getType();
@@ -3760,6 +4068,7 @@ Decl *ASTNodeImporter::VisitVarDecl(VarDecl *D) {
 
           Importer.ToDiag(Loc, diag::err_odr_variable_type_inconsistent)
             << Name << D->getType() << FoundVar->getType();
+
           Importer.ToDiag(FoundVar->getLocation(), diag::note_odr_value_here)
             << FoundVar->getType();
         }
@@ -7594,6 +7903,6 @@ bool ASTImporter::IsStructurallyEquivalent(QualType From, QualType To,
     return true;
       
   StructuralEquivalenceContext Ctx(FromContext, ToContext, NonEquivalentDecls,
-                                   false, Complain);
+                                   false, true);
   return Ctx.IsStructurallyEquivalent(From, To);
 }
