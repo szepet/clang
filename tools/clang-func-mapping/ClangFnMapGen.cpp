@@ -21,6 +21,7 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"
+#include "clang/Index/USRGeneration.h"
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/Support/Path.h"
@@ -42,10 +43,14 @@ typedef StringMap<StrSet> CallGraph;
 
 static cl::OptionCategory ClangFnMapGenCategory("clang-fnmapgen options");
 static cl::opt<std::string> CTUDir(
-    "ctu-dir",
+    "xtu-dir",
     cl::desc(
         "Directory that contains the CTU related files (e.g.: AST dumps)."),
     cl::init(""), cl::cat(ClangFnMapGenCategory));
+
+static cl::opt<bool> UseUSR("use-usr",
+                            cl::desc("Use USR instead of name mangling."),
+                            cl::init(false), cl::cat(ClangFnMapGenCategory));
 
 static void lockedWrite(StringRef FileName, StringRef Content) {
   if (!Content.empty()) {
@@ -147,7 +152,15 @@ void MapFunctionNamesConsumer::handleDecl(const Decl *D) {
 
       SmallString<128> FileName("ast");
       llvm::sys::path::append(FileName, getTripleSuffix(Ctx), CurrentFileName);
-      std::string FullName = MangledName + Triple;
+      std::string FullName;
+      if (UseUSR) {
+        SmallString<128> DeclUSR;
+        bool Res = index::generateUSRForDecl(D, DeclUSR);
+        assert(Res);
+        FullName = DeclUSR.str().str();
+      } else {
+        FullName = MangledName + Triple;
+      }
 
       switch (FD->getLinkageInternal()) {
       case ExternalLinkage:
