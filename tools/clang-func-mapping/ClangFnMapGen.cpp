@@ -156,7 +156,9 @@ void MapFunctionNamesConsumer::handleDecl(const Decl *D) {
       if (UseUSR) {
         SmallString<128> DeclUSR;
         bool Res = index::generateUSRForDecl(D, DeclUSR);
-        assert(Res);
+        if (Res)
+          D->dump();
+        assert(!Res);
         FullName = DeclUSR.str().str();
       } else {
         FullName = MangledName + Triple;
@@ -168,7 +170,7 @@ void MapFunctionNamesConsumer::handleDecl(const Decl *D) {
       case UniqueExternalLinkage:
         if (SM.isInMainFile(Body->getLocStart()))
           DefinedFuncsStr << "!";
-        DefinedFuncsStr << FullName << " " << FileName.c_str() << "\n";
+        DefinedFuncsStr << FullName << " " << FileName.c_str() << " 0\n";
       default:
         break;
       }
@@ -176,8 +178,19 @@ void MapFunctionNamesConsumer::handleDecl(const Decl *D) {
       WalkAST Walker(*this, FullName, ItaniumCtx, Triple);
       Walker.Visit(Body);
     } else if (!FD->getBody() && !FD->getBuiltinID()) {
-      std::string MangledName = getMangledName(FD);
-      ExternFuncStr << MangledName << Triple << "\n";
+      std::string MangledName;
+      if (UseUSR) {
+        SmallString<128> DeclUSR;
+        bool Res = index::generateUSRForDecl(D, DeclUSR);
+        if (Res)
+          D->dump();
+        assert(!Res);
+        MangledName = DeclUSR.str().str();
+      } else {
+        MangledName = getMangledName(FD) + Triple;
+      }
+
+      ExternFuncStr << MangledName << "\n";
     }
   }
 

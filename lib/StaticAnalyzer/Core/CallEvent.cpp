@@ -426,7 +426,7 @@ RuntimeDefinition AnyFunctionCall::getRuntimeDefinition() const {
         [](const Decl *D) {
           SmallString<128> DeclUSR;
           bool Ret = index::generateUSRForDecl(D, DeclUSR);
-          assert(Ret);
+          assert(!Ret);
           return DeclUSR.str().str();
         },
         CI.getDiagnostics(), ASTLoader);

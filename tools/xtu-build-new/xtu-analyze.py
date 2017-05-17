@@ -59,6 +59,8 @@ parser.add_argument('-j', metavar='threads', dest='threads',
                     default=threading_factor)
 parser.add_argument('-v', dest='verbose', action='store_true',
                     help='Verbose output of every command executed')
+parser.add_argument('--use-usr', dest='usr', action='store_true',
+                    help='Use Unified Symbol Resolution (USR) for cross-referencing')
 parser.add_argument('--clang-path', metavar='clang-path', dest='clang_path',
                     help='Set path of clang binaries to be used (default '
                          'taken from CLANG_PATH environment variable)',
@@ -154,6 +156,9 @@ if mainargs.enabled_checkers:
     analyzer_params += ['-analyzer-checker', mainargs.enabled_checkers]
 if mainargs.disabled_checkers:
     analyzer_params += ['-analyzer-disable-checker', mainargs.disable_checkers]
+if mainargs.usr:
+    analyzer_params += ['-analyzer-config',
+                        'use-usr=true']
 if not mainargs.no_xtu:
     analyzer_params += ['-analyzer-config',
                         'xtu-dir=' + os.path.abspath(mainargs.xtuindir)]
@@ -260,7 +265,7 @@ def analyze(directory, command):
 
     cmdenv = analyzer_env.copy()
     cmdenv['ANALYZE_BUILD_CC'] = compiler
-    cmdenv['ANALYZE_BUILD_CXX'] = compiler
+    cmdenv['ANALYZE_BUILD_CXX'] = compiler    
     if mainargs.record_coverage:
         cmdenv['ANALYZE_BUILD_PARAMETERS'] += \
             ' -Xanalyzer -analyzer-config -Xanalyzer record-coverage=' + \
