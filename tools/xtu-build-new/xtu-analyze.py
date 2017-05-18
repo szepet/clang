@@ -191,6 +191,7 @@ analyzer_env['ANALYZE_BUILD_CLANG'] = os.path.join(clang_path, 'clang')
 analyzer_env['ANALYZE_BUILD_REPORT_DIR'] = os.path.abspath(mainargs.xtuoutdir)
 analyzer_env['ANALYZE_BUILD_PARAMETERS'] = ' '.join(passthru_analyzer_params)
 analyzer_env['ANALYZE_BUILD_REPORT_FORMAT'] = mainargs.output_format
+analyzer_env['ANALYZE_BUILD_REPORT_FAILURES'] = 'yes'
 
 graph_lock = threading.Lock()
 
@@ -264,8 +265,13 @@ def analyze(directory, command):
     tu_name += '_' + str(uuid.uuid4())
 
     cmdenv = analyzer_env.copy()
-    cmdenv['ANALYZE_BUILD_CC'] = compiler
-    cmdenv['ANALYZE_BUILD_CXX'] = compiler    
+    #cmdenv['ANALYZE_BUILD_CC'] = compiler
+    #cmdenv['ANALYZE_BUILD_CXX'] = compiler
+    cmdenv['INTERCEPT_BUILD'] = json.dumps({
+        'verbose': 1,
+        'cc': [compiler],
+        'cxx': [compiler]
+        })    
     if mainargs.record_coverage:
         cmdenv['ANALYZE_BUILD_PARAMETERS'] += \
             ' -Xanalyzer -analyzer-config -Xanalyzer record-coverage=' + \

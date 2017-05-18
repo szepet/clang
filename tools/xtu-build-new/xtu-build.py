@@ -253,4 +253,7 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 graph_script = os.path.join(script_dir, 'lib/xtu-build-graph.py')
 graph_script += ' -b ' + mainargs.buildlog + ' -o '
 graph_script += os.path.join(mainargs.xtuindir, 'build_dependency.json')
+graph_script += ' -d ' + defined_fns_filename
+graph_script += ' -e ' + extern_fns_filename
+graph_script += ' -c ' + os.path.join(mainargs.xtuindir, 'cfg.txt')
 subprocess.call(graph_script, shell=True)
