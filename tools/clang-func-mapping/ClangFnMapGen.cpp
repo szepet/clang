@@ -53,15 +53,13 @@ static cl::opt<bool> UseUSR("use-usr",
                             cl::init(false), cl::cat(ClangFnMapGenCategory));
 
 static void lockedWrite(StringRef FileName, StringRef Content) {
-  if (!Content.empty()) {
-    int fd = open(FileName.str().c_str(), O_CREAT | O_WRONLY | O_APPEND, 0666);
-    flock(fd, LOCK_EX);
-    ssize_t written = write(fd, Content.data(), Content.size());
-    assert(written == (ssize_t)Content.size());
-    (void)written;
-    flock(fd, LOCK_UN);
-    close(fd);
-  }
+  int fd = open(FileName.str().c_str(), O_CREAT | O_WRONLY | O_APPEND, 0666);
+  flock(fd, LOCK_EX);
+  ssize_t written = write(fd, Content.data(), Content.size());
+  assert(written == (ssize_t)Content.size());
+  (void)written;
+  flock(fd, LOCK_UN);
+  close(fd);
 }
 
 static std::string getTripleSuffix(ASTContext &Ctx) {
