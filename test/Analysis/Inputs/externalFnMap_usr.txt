@@ -10,3 +10,6 @@ c:@S@mycls@S@embed_cls2@F@fecl2#I# xtu-other.cpp.ast
 c:@F@f#I# xtu-other.cpp.ast
 c:@N@myns@F@fns#I# xtu-other.cpp.ast
 c:@F@h#I# xtu-other.cpp.ast
+c:@F@h_chain#I# xtu-chain.cpp.ast
+c:@N@chns@S@chcls@F@chf4#I# xtu-chain.cpp.ast
+c:@N@chns@F@chf2#I# xtu-chain.cpp.ast
