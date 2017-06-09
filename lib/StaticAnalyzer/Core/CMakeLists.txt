@@ -1,4 +1,4 @@
-set(LLVM_LINK_COMPONENTS support)
+set(LLVM_LINK_COMPONENTS Support)
 
 # Link Z3 if the user wants to build it.
 if(CLANG_ANALYZER_WITH_Z3)
@@ -54,6 +54,8 @@ add_clang_library(clangStaticAnalyzerCore
 
   LINK_LIBS
   clangAST
+  clangASTMatchers
+  clangDynamicASTMatchers
   clangAnalysis
   clangBasic
   clangLex
