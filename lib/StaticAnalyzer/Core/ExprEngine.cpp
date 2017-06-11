@@ -17,6 +17,7 @@
 #include "PrettyStackTraceLocationContext.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/AST/StmtVisitor.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/ParentMap.h"
 #include "clang/Analysis/CFGStmtMap.h"
@@ -1557,6 +1558,28 @@ std::set<const Stmt*> ExceptionStmts;
 std::set<const Stmt*> UnrolledLoops;
 CFGStmtMap * m;
 
+class LoopVisitor : public ConstStmtVisitor<LoopVisitor> {
+public:
+    void VisitChildren(const Stmt* S){
+      for (const Stmt *Child : S->children())
+        if(Child)
+          Visit(Child);
+      if(auto CallExp = dyn_cast<CallExpr>(S))
+        if(CallExp->getCalleeDecl())
+          Visit(CallExp->getCalleeDecl()->getBody());
+    }
+
+    void VisitStmt(const Stmt* S)
+    {
+      S->dump();
+      if(!S || (isa<ForStmt>(S) && UnrolledLoops.find(S) == UnrolledLoops.end()))
+        return;
+      S->dump();
+      ExceptionBlocks.insert(m->getBlock(S));
+      VisitChildren(S);
+    }
+};
+/*
 class LoopVisitor : public RecursiveASTVisitor<LoopVisitor> {
 public:
     bool dataTraverseStmtPre(Stmt *x) {
@@ -1571,7 +1594,7 @@ public:
       }
       return true;
     }
-};
+};*/
 /// Block entrance.  (Update counters).
 void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
@@ -1583,8 +1606,9 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
   if (Term && isa<ForStmt>(Term) && shouldCompletelyUnroll(Term, AMgr.getASTContext(), Pred)) {
     if(UnrolledLoops.find(Term)==UnrolledLoops.end()) {
       UnrolledLoops.insert(Term);
+      Term->dump();
       //ExceptionStmts.insert(nullptr);
-      v.TraverseStmt(const_cast<Stmt *>(Term));
+      v.Visit(Term);
       //Term->dump();
       //Term->printPretty(llvm::errs(),nullptr,AMgr.getASTContext().getPrintingPolicy());
     }
@@ -1613,15 +1637,16 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     nodeBuilder.generateNode(WidenedState, Pred);
     return;
   }
+  nodeBuilder.getContext().getBlock()->dump();
 
   // FIXME: Refactor this into a checker.
   if (BlockCount >= AMgr.options.maxBlockVisitOnPath) {
     static SimpleProgramPointTag tag(TagProviderName, "Block count exceeded");
     const ExplodedNode *Sink =
                    nodeBuilder.generateSink(Pred->getState(), Pred, &tag);
-    //const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
-    //if(Term)Term->dump();
-    //nodeBuilder.getContext().getBlock()->dump();
+    const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
+    if(Term)Term->dump();
+    nodeBuilder.getContext().getBlock()->dump();
     // Check if we stopped at the top level function or not.
     // Root node should have the location context of the top most function.
     const LocationContext *CalleeLC = Pred->getLocation().getLocationContext();
