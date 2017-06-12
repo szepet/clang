@@ -1499,11 +1499,6 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
   return true;
 }
 
-static bool areSameVariable(const ValueDecl *First, const ValueDecl *Second) {
-  return First && Second &&
-         First->getCanonicalDecl() == Second->getCanonicalDecl();
-}
-
 static bool shouldCompletelyUnroll(const Stmt* LoopStmt, ASTContext& ASTCtx, ExplodedNode* Pred) {
   auto LoopMatcher =
           forStmt(hasLoopInit(anyOf(declStmt(hasSingleDecl(varDecl(hasInitializer(integerLiteral())).bind("initVarName"))),
@@ -1511,11 +1506,11 @@ static bool shouldCompletelyUnroll(const Stmt* LoopStmt, ASTContext& ASTCtx, Exp
                   hasIncrement(unaryOperator(
                           hasOperatorName("++"),
                           hasUnaryOperand(declRefExpr(
-                                  to(varDecl(hasType(isInteger())).bind("incVarName")))))),
+                                  to(varDecl(allOf(equalsBoundNode("initVarName"),hasType(isInteger())))))))),
                   hasCondition(binaryOperator(
                           anyOf(hasOperatorName("<"),hasOperatorName(">"),hasOperatorName("<="),hasOperatorName(">=")),
                           hasLHS(ignoringParenImpCasts(declRefExpr(
-                                  to(varDecl(hasType(isInteger())).bind("condVarName"))))),
+                                  to(varDecl(allOf(equalsBoundNode("initVarName"),hasType(isInteger()))))))),
                           hasRHS(/*expr(hasType(isInteger()))*/ integerLiteral().bind("bound")))),
                   unless(hasBody(anyOf(hasDescendant(callExpr(forEachArgumentWithParam(
                           declRefExpr(hasDeclaration(equalsBoundNode("initVarName"))),
@@ -1524,51 +1519,24 @@ static bool shouldCompletelyUnroll(const Stmt* LoopStmt, ASTContext& ASTCtx, Exp
                                                      hasDescendant(expr(unaryOperator(hasOperatorName("&"),
                                                                                  hasUnaryOperand(declRefExpr(hasDeclaration(equalsBoundNode("initVarName")))))
   )))))
-                  //unless(hasBody(/*anyOf(*/hasDescendant(callExpr(hasAnyArgument(declRefExpr(to(varDecl(equalsBoundNode("initVarName"))))))/*),
-                  //                   hasDescendant(declRefExpr(ignoringImpCasts(hasType(pointsTo(isInteger())))))*/)))
           ).bind("forLoop");
 
   if (/*const ForStmt* ForLoop = */dyn_cast_or_null<ForStmt>(LoopStmt)) {
     auto Matches = match(LoopMatcher, *LoopStmt, ASTCtx);
     if(Matches.empty())
       return false;
-    const VarDecl *IncVar = Matches[0].getNodeAs<VarDecl>("incVarName");
-    const VarDecl *CondVar = Matches[0].getNodeAs<VarDecl>("condVarName");
-    const VarDecl *InitVar = Matches[0].getNodeAs<VarDecl>("initVarName");
-    //const Expr *Bound = Matches[0].getNodeAs<Expr>("bound");
-    if (!areSameVariable(IncVar, CondVar) || !areSameVariable(IncVar, InitVar))
-      return false;
-/*    auto State = Pred->getState();
-    auto BoundVal = State->getSVal(Bound,Pred->getLocationContext());
-   // llvm::errs() << BoundVal.getAsSymExpr() << "\n";
-    Bound->dump();
-    BoundVal.dump();
-    llvm::errs() << (nullptr == BoundVal.getAsSymbolicExpression()) << "\n";
-    llvm::errs() << State->getConstraintManager().getSymVal(State, BoundVal.getAsSymbol()) << "\n";
-
-   llvm::errs() << BoundVal.isConstant() << "\n";
-    if(BoundVal.getAs<clang::ento::DefinedSVal>())
-      llvm::errs() << "WASD1\n";
-    if(BoundVal.getAs<clang::ento::DefinedOrUnknownSVal>())
-      llvm::errs() << "WASD2\n";
-    if(BoundVal.getAs<clang::ento::Loc>())
-      llvm::errs() << "WASD3\n";
-*/
-    //if(auto Val = State->getConstraintManager().getSymVal(State, BoundVal.getAsSymExpr()))
-    //llvm::errs() << *Val << "\n";
-    //llvm::errs() << Matches.size() << "\n";
-    //llvm::errs() << !Matches.empty() << "\n";
   }
   return true;
 }
 std::set<const CFGBlock*> ExceptionBlocks;
-std::set<const Stmt*> ExceptionStmts;
 std::set<const Stmt*> UnrolledLoops;
-CFGStmtMap * m;
+
 
 class LoopVisitor : public ConstStmtVisitor<LoopVisitor> {
 public:
-    LoopVisitor(AnalysisManager& AMgr):AMgr(&AMgr){}
+    LoopVisitor(AnalysisManager& AMgr, CFGStmtMap* M):
+            AMgr(AMgr),StmtToBlockMap(M){}
+
     void VisitChildren(const Stmt* S){
       for (const Stmt *Child : S->children())
         if(Child)
@@ -1581,9 +1549,9 @@ public:
           (isa<ForStmt>(S) && UnrolledLoops.find(S) == UnrolledLoops.end()))
         return;
       //S->dump();
-      ExceptionBlocks.insert(m->getBlock(S));
+      ExceptionBlocks.insert(StmtToBlockMap->getBlock(S));
       if (auto CallExp = dyn_cast<CallExpr>(S)) {
-        auto CalleeCFG = AMgr->getCFG(CallExp->getCalleeDecl());
+        auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
         for (CFG::const_iterator BlockIt = CalleeCFG->begin();
              BlockIt != CalleeCFG->end(); BlockIt++) {
           ExceptionBlocks.insert(*BlockIt);
@@ -1592,40 +1560,22 @@ public:
       VisitChildren(S);
     }
 private:
-    AnalysisManager* AMgr;
+    AnalysisManager& AMgr;
+    CFGStmtMap* StmtToBlockMap;
 };
-/*
-class LoopVisitor : public RecursiveASTVisitor<LoopVisitor> {
-public:
-    bool dataTraverseStmtPre(Stmt *x) {
-      if(x && isa<ForStmt>(x) && UnrolledLoops.find(const_cast<const Stmt*>(x)) == UnrolledLoops.end())
-        return false;
-      return true;
-    }
-    bool VisitStmt(const Stmt *x) {
-      if(x) {
-        //ExceptionStmts.insert(x);
-        ExceptionBlocks.insert(m->getBlock(x));
-      }
-      return true;
-    }
-};*/
+
 /// Block entrance.  (Update counters).
 void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
-  LoopVisitor v(AMgr);
+  LoopVisitor v(AMgr,
+         Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap());
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
   const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
-  m = Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap();
   if (Term && isa<ForStmt>(Term) && shouldCompletelyUnroll(Term, AMgr.getASTContext(), Pred)) {
     if(UnrolledLoops.find(Term)==UnrolledLoops.end()) {
       UnrolledLoops.insert(Term);
-      Term->dump();
-      //ExceptionStmts.insert(nullptr);
       v.Visit(Term);
-      //Term->dump();
-      //Term->printPretty(llvm::errs(),nullptr,AMgr.getASTContext().getPrintingPolicy());
     }
     NumTimesLoopUnrolled = UnrolledLoops.size();
     return;
@@ -1652,17 +1602,12 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     nodeBuilder.generateNode(WidenedState, Pred);
     return;
   }
-  //nodeBuilder.getContext().getBlock()->dump();
 
   // FIXME: Refactor this into a checker.
   if (BlockCount >= AMgr.options.maxBlockVisitOnPath) {
     static SimpleProgramPointTag tag(TagProviderName, "Block count exceeded");
     const ExplodedNode *Sink =
                    nodeBuilder.generateSink(Pred->getState(), Pred, &tag);
-    const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
-    if(Term)Term->dump();
-    llvm::errs() << "LOLODUDE\n";
-    nodeBuilder.getContext().getBlock()->dump();
     // Check if we stopped at the top level function or not.
     // Root node should have the location context of the top most function.
     const LocationContext *CalleeLC = Pred->getLocation().getLocationContext();
