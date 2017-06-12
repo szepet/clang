@@ -1504,22 +1504,30 @@ static bool areSameVariable(const ValueDecl *First, const ValueDecl *Second) {
          First->getCanonicalDecl() == Second->getCanonicalDecl();
 }
 
-static StatementMatcher LoopMatcher =
-        forStmt(hasLoopInit(anyOf(declStmt(hasSingleDecl(varDecl(hasInitializer(integerLiteral())).bind("initVarName"))), binaryOperator(hasLHS(declRefExpr(to(varDecl().bind("initVarName")))),hasRHS(integerLiteral())))),
-                hasIncrement(unaryOperator(
-                        hasOperatorName("++"),
-                        hasUnaryOperand(declRefExpr(
-                                to(varDecl(hasType(isInteger())).bind("incVarName")))))),
-                hasCondition(binaryOperator(
-                        anyOf(hasOperatorName("<"),hasOperatorName(">"),hasOperatorName("<="),hasOperatorName(">=")),
-                        hasLHS(ignoringParenImpCasts(declRefExpr(
-                                to(varDecl(hasType(isInteger())).bind("condVarName"))))),
-                        hasRHS(/*expr(hasType(isInteger()))*/ integerLiteral().bind("bound")))),
-                unless(hasBody(/*anyOf(*/hasDescendant(declRefExpr(to(varDecl(equalsBoundNode("initVarName"))))/*),
-                                     hasDescendant(declRefExpr(ignoringImpCasts(hasType(pointsTo(isInteger())))))*/)))
-        ).bind("forLoop");
-
 static bool shouldCompletelyUnroll(const Stmt* LoopStmt, ASTContext& ASTCtx, ExplodedNode* Pred) {
+  auto LoopMatcher =
+          forStmt(hasLoopInit(anyOf(declStmt(hasSingleDecl(varDecl(hasInitializer(integerLiteral())).bind("initVarName"))),
+                                    binaryOperator(hasLHS(declRefExpr(to(varDecl().bind("initVarName")))),hasRHS(integerLiteral())))),
+                  hasIncrement(unaryOperator(
+                          hasOperatorName("++"),
+                          hasUnaryOperand(declRefExpr(
+                                  to(varDecl(hasType(isInteger())).bind("incVarName")))))),
+                  hasCondition(binaryOperator(
+                          anyOf(hasOperatorName("<"),hasOperatorName(">"),hasOperatorName("<="),hasOperatorName(">=")),
+                          hasLHS(ignoringParenImpCasts(declRefExpr(
+                                  to(varDecl(hasType(isInteger())).bind("condVarName"))))),
+                          hasRHS(/*expr(hasType(isInteger()))*/ integerLiteral().bind("bound")))),
+                  unless(hasBody(anyOf(hasDescendant(callExpr(forEachArgumentWithParam(
+                          declRefExpr(hasDeclaration(equalsBoundNode("initVarName"))),
+                          parmVarDecl(hasType(
+                                  references(qualType(unless(isConstQualified())))))))),
+                                                     hasDescendant(expr(unaryOperator(hasOperatorName("&"),
+                                                                                 hasUnaryOperand(declRefExpr(hasDeclaration(equalsBoundNode("initVarName")))))
+  )))))
+                  //unless(hasBody(/*anyOf(*/hasDescendant(callExpr(hasAnyArgument(declRefExpr(to(varDecl(equalsBoundNode("initVarName"))))))/*),
+                  //                   hasDescendant(declRefExpr(ignoringImpCasts(hasType(pointsTo(isInteger())))))*/)))
+          ).bind("forLoop");
+
   if (/*const ForStmt* ForLoop = */dyn_cast_or_null<ForStmt>(LoopStmt)) {
     auto Matches = match(LoopMatcher, *LoopStmt, ASTCtx);
     if(Matches.empty())
@@ -1527,7 +1535,7 @@ static bool shouldCompletelyUnroll(const Stmt* LoopStmt, ASTContext& ASTCtx, Exp
     const VarDecl *IncVar = Matches[0].getNodeAs<VarDecl>("incVarName");
     const VarDecl *CondVar = Matches[0].getNodeAs<VarDecl>("condVarName");
     const VarDecl *InitVar = Matches[0].getNodeAs<VarDecl>("initVarName");
-    const Expr *Bound = Matches[0].getNodeAs<Expr>("bound");
+    //const Expr *Bound = Matches[0].getNodeAs<Expr>("bound");
     if (!areSameVariable(IncVar, CondVar) || !areSameVariable(IncVar, InitVar))
       return false;
 /*    auto State = Pred->getState();
@@ -1560,24 +1568,31 @@ CFGStmtMap * m;
 
 class LoopVisitor : public ConstStmtVisitor<LoopVisitor> {
 public:
+    LoopVisitor(AnalysisManager& AMgr):AMgr(&AMgr){}
     void VisitChildren(const Stmt* S){
       for (const Stmt *Child : S->children())
         if(Child)
           Visit(Child);
-      if(auto CallExp = dyn_cast<CallExpr>(S))
-        if(CallExp->getCalleeDecl())
-          Visit(CallExp->getCalleeDecl()->getBody());
     }
 
-    void VisitStmt(const Stmt* S)
-    {
-      S->dump();
-      if(!S || (isa<ForStmt>(S) && UnrolledLoops.find(S) == UnrolledLoops.end()))
+    void VisitStmt(const Stmt* S) {
+      //S->dump();
+      if (!S ||
+          (isa<ForStmt>(S) && UnrolledLoops.find(S) == UnrolledLoops.end()))
         return;
-      S->dump();
+      //S->dump();
       ExceptionBlocks.insert(m->getBlock(S));
+      if (auto CallExp = dyn_cast<CallExpr>(S)) {
+        auto CalleeCFG = AMgr->getCFG(CallExp->getCalleeDecl());
+        for (CFG::const_iterator BlockIt = CalleeCFG->begin();
+             BlockIt != CalleeCFG->end(); BlockIt++) {
+          ExceptionBlocks.insert(*BlockIt);
+        }
+      }
       VisitChildren(S);
     }
+private:
+    AnalysisManager* AMgr;
 };
 /*
 class LoopVisitor : public RecursiveASTVisitor<LoopVisitor> {
@@ -1599,7 +1614,7 @@ public:
 void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
-  LoopVisitor v;
+  LoopVisitor v(AMgr);
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
   const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
   m = Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap();
@@ -1637,7 +1652,7 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     nodeBuilder.generateNode(WidenedState, Pred);
     return;
   }
-  nodeBuilder.getContext().getBlock()->dump();
+  //nodeBuilder.getContext().getBlock()->dump();
 
   // FIXME: Refactor this into a checker.
   if (BlockCount >= AMgr.options.maxBlockVisitOnPath) {
@@ -1646,6 +1661,7 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                    nodeBuilder.generateSink(Pred->getState(), Pred, &tag);
     const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
     if(Term)Term->dump();
+    llvm::errs() << "LOLODUDE\n";
     nodeBuilder.getContext().getBlock()->dump();
     // Check if we stopped at the top level function or not.
     // Root node should have the location context of the top most function.
