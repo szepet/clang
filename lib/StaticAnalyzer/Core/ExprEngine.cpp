@@ -32,6 +32,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/AnalysisManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/LoopWidening.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/LoopUnrolling.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/raw_ostream.h"
@@ -42,7 +43,6 @@
 
 using namespace clang;
 using namespace ento;
-using namespace clang::ast_matchers;
 using llvm::APSInt;
 
 #define DEBUG_TYPE "ExprEngine"
@@ -57,9 +57,6 @@ STATISTIC(NumMaxBlockCountReachedInInlined,
             "an inlined function");
 STATISTIC(NumTimesRetriedWithoutInlining,
             "The # of times we re-evaluated a call without inlining");
-
-STATISTIC(NumTimesLoopUnrolled,
-          "The # of times a loop is got completely unrolled");
 
 typedef std::pair<const CXXBindTemporaryExpr *, const StackFrameContext *>
     CXXBindTemporaryContext;
@@ -1499,79 +1496,24 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
   return true;
 }
 
-static bool shouldCompletelyUnroll(const Stmt* LoopStmt, ASTContext& ASTCtx, ExplodedNode* Pred) {
-  auto LoopMatcher =
-          forStmt(hasLoopInit(anyOf(declStmt(hasSingleDecl(varDecl(hasInitializer(integerLiteral())).bind("initVarName"))),
-                                    binaryOperator(hasLHS(declRefExpr(to(varDecl().bind("initVarName")))),hasRHS(integerLiteral())))),
-                  hasIncrement(unaryOperator(
-                          hasOperatorName("++"),
-                          hasUnaryOperand(declRefExpr(
-                                  to(varDecl(allOf(equalsBoundNode("initVarName"),hasType(isInteger())))))))),
-                  hasCondition(binaryOperator(
-                          anyOf(hasOperatorName("<"),hasOperatorName(">"),hasOperatorName("<="),hasOperatorName(">=")),
-                          hasLHS(ignoringParenImpCasts(declRefExpr(
-                                  to(varDecl(allOf(equalsBoundNode("initVarName"),hasType(isInteger()))))))),
-                          hasRHS(/*expr(hasType(isInteger()))*/ integerLiteral().bind("bound")))),
-                  unless(hasBody(anyOf(hasDescendant(callExpr(forEachArgumentWithParam(
-                          declRefExpr(hasDeclaration(equalsBoundNode("initVarName"))),
-                          parmVarDecl(hasType(
-                                  references(qualType(unless(isConstQualified())))))))),
-                                                     hasDescendant(expr(unaryOperator(hasOperatorName("&"),
-                                                                                 hasUnaryOperand(declRefExpr(hasDeclaration(equalsBoundNode("initVarName")))))
-  )))))
-          ).bind("forLoop");
-
-  if (/*const ForStmt* ForLoop = */dyn_cast_or_null<ForStmt>(LoopStmt)) {
-    auto Matches = match(LoopMatcher, *LoopStmt, ASTCtx);
-    if(Matches.empty())
-      return false;
-  }
-  return true;
-}
-std::set<const CFGBlock*> ExceptionBlocks;
-std::set<const Stmt*> UnrolledLoops;
-
-
-class LoopVisitor : public ConstStmtVisitor<LoopVisitor> {
-public:
-    LoopVisitor(AnalysisManager& AMgr, CFGStmtMap* M):
-            AMgr(AMgr),StmtToBlockMap(M){}
-
-    void VisitChildren(const Stmt* S){
-      for (const Stmt *Child : S->children())
-        if(Child)
-          Visit(Child);
-    }
-
-    void VisitStmt(const Stmt* S) {
-      //S->dump();
-      if (!S ||
-          (isa<ForStmt>(S) && UnrolledLoops.find(S) == UnrolledLoops.end()))
-        return;
-      //S->dump();
-      ExceptionBlocks.insert(StmtToBlockMap->getBlock(S));
-      if (auto CallExp = dyn_cast<CallExpr>(S)) {
-        auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
-        for (CFG::const_iterator BlockIt = CalleeCFG->begin();
-             BlockIt != CalleeCFG->end(); BlockIt++) {
-          ExceptionBlocks.insert(*BlockIt);
-        }
-      }
-      VisitChildren(S);
-    }
-private:
-    AnalysisManager& AMgr;
-    CFGStmtMap* StmtToBlockMap;
-};
-
 /// Block entrance.  (Update counters).
 void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
-  LoopVisitor v(AMgr,
-         Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap());
+
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
   const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
+
+  if(shouldCompletelyUnroll(Term,AMgr.getASTContext())){
+    auto UnrolledState = markBlocksAsUnrolled(Pred->getState(),AMgr,
+                                              Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap(),
+                                              Term);
+    nodeBuilder.generateNode(UnrolledState,Pred);
+    return;
+  }
+  if(isUnrolledLoopBlock(Pred->getState(),nodeBuilder.getContext().getBlock()))
+    return;
+  /*
   if (Term && isa<ForStmt>(Term) && shouldCompletelyUnroll(Term, AMgr.getASTContext(), Pred)) {
     if(UnrolledLoops.find(Term)==UnrolledLoops.end()) {
       UnrolledLoops.insert(Term);
@@ -1580,10 +1522,12 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     NumTimesLoopUnrolled = UnrolledLoops.size();
     return;
   }
+  auto PrevState = Pred->getState();
+  auto ULB = PrevState->get<UnrolledLoopBlocks>();
 
   if(ExceptionBlocks.find(nodeBuilder.getContext().getBlock()) != ExceptionBlocks.end()){
     return;
-  }
+  }*/
 
   // If this block is terminated by a loop and it has already been visited the
   // maximum number of times, widen the loop

@@ -30,50 +30,59 @@
 #include "clang/AST/StmtVisitor.h"
 #include "PrettyStackTraceLocationContext.h"
 
-
 using namespace clang;
 using namespace ento;
 using namespace clang::ast_matchers;
 
+#define DEBUG_TYPE "LoopUnrolling"
+
+STATISTIC(NumTimesLoopUnrolled,
+          "The # of times a loop is got completely unrolled");
+
+
+
 REGISTER_MAP_WITH_PROGRAMSTATE(UnrolledLoopBlocks, const Stmt *,
                                llvm::ImmutableSet<const CFGBlock *>)
-
+namespace clang {
+namespace ento {
 class LoopVisitor : public ConstStmtVisitor<LoopVisitor> {
 public:
-    LoopVisitor(ProgramStateRef State, AnalysisManager& AMgr, CFGStmtMap* M):
-            State(State), AMgr(AMgr),StmtToBlockMap(M){}
+  LoopVisitor(ProgramStateRef State, AnalysisManager &AMgr, CFGStmtMap *M,const Stmt* Term )
+      : State(State), AMgr(AMgr), StmtToBlockMap(M), LoopStmt(Term) {}
 
-    void VisitChildren(const Stmt* S){
-      for (const Stmt *Child : S->children())
-        if(Child)
-          Visit(Child);
-    }
+  void VisitChildren(const Stmt *S) {
+    for (const Stmt *Child : S->children())
+      if (Child)
+        Visit(Child);
+  }
 
-    void VisitStmt(const Stmt* S) {
-      if (!S ||
-          (isa<ForStmt>(S) && !State->contains<UnrolledLoopBlocks>(S)))
-        return;
-      auto BlockSet = *State->get<UnrolledLoopBlocks>(S);
-      BlockSet = F.add(BlockSet,StmtToBlockMap->getBlock(S));
-      if (auto CallExp = dyn_cast<CallExpr>(S)) {
-        auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
-        for (CFG::const_iterator BlockIt = CalleeCFG->begin();
-             BlockIt != CalleeCFG->end(); BlockIt++) {
-             BlockSet = F.add(BlockSet,StmtToBlockMap->getBlock(S));
-        }
+  void VisitStmt(const Stmt *S) {
+    if (!S || (isa<ForStmt>(S) && !State->contains<UnrolledLoopBlocks>(S)))
+      return;
+    auto BlockSet = *State->get<UnrolledLoopBlocks>(LoopStmt);
+    BlockSet = F.add(BlockSet, StmtToBlockMap->getBlock(S));
+    if (auto CallExp = dyn_cast<CallExpr>(S)) {
+      auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
+      for (CFG::const_iterator BlockIt = CalleeCFG->begin();
+           BlockIt != CalleeCFG->end(); BlockIt++) {
+        BlockSet = F.add(BlockSet, StmtToBlockMap->getBlock(S));
       }
-      VisitChildren(S);
     }
-private:
-    ProgramStateRef State;
-    AnalysisManager& AMgr;
-    CFGStmtMap* StmtToBlockMap;
+    State = State->set<UnrolledLoopBlocks>(S, BlockSet);
+    VisitChildren(S);
+  }
 
-    llvm::ImmutableSet<const CFGBlock *>::Factory F;
+  ProgramStateRef getState() { return State; }
+
+private:
+  ProgramStateRef State;
+  AnalysisManager &AMgr;
+  CFGStmtMap *StmtToBlockMap;
+  const Stmt* LoopStmt;
+  llvm::ImmutableSet<const CFGBlock *>::Factory F;
 };
 
-bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx,
-                            ExplodedNode *Pred) {
+bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
   auto LoopMatcher =
       forStmt(
           hasLoopInit(anyOf(
@@ -91,8 +100,7 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx,
                     hasOperatorName("<="), hasOperatorName(">=")),
               hasLHS(ignoringParenImpCasts(declRefExpr(to(varDecl(allOf(
                   equalsBoundNode("initVarName"), hasType(isInteger()))))))),
-              hasRHS(integerLiteral().bind(
-                  "bound")))),
+              hasRHS(integerLiteral().bind("bound")))),
           unless(hasBody(anyOf(
               hasDescendant(callExpr(forEachArgumentWithParam(
                   declRefExpr(hasDeclaration(equalsBoundNode("initVarName"))),
@@ -107,28 +115,41 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx,
     auto Matches = match(LoopMatcher, *LoopStmt, ASTCtx);
     if (Matches.empty())
       return false;
+    return true;
   }
-  return true;
+  return false;
 }
 
-void processCFGBlockEntrance(const BlockEdge &L,
-  NodeBuilderWithSinks &nodeBuilder,
-  ExplodedNode *Pred) {
-    //LoopVisitor v(AMgr,
-    //              Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap());
-    PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
-    const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
-    /*if (Term && isa<ForStmt>(Term) && shouldCompletelyUnroll(Term, AMgr.getASTContext(), Pred)) {
-     if(UnrolledLoops.find(Term)==UnrolledLoops.end()) {
-        UnrolledLoops.insert(Term);
-        v.Visit(Term);
-      }
-      //NumTimesLoopUnrolled = UnrolledLoops.size();
-      return;
-    }*/
-
-    //if(ExceptionBlocks.find(nodeBuilder.getContext().getBlock()) != ExceptionBlocks.end()){
-    //  return;
-   // }
+bool isUnrolledLoopBlock(ProgramStateRef State, const CFGBlock *Block) {
+  UnrolledLoopBlocksTy ULB = State->get<UnrolledLoopBlocks>();
+  for (UnrolledLoopBlocksTy::value_type &E : ULB) {
+    if (E.second.isEmpty())
+      llvm::errs() << "DUDE\n";
+      return true;
+  }
+  return false;
 }
 
+ProgramStateRef markBlocksAsUnrolled(ProgramStateRef State,
+                                     AnalysisManager &AMgr,
+                                     CFGStmtMap *StmtToBlockMap,
+                                     const Stmt *Term) {
+
+  if (!State->contains<UnrolledLoopBlocks>(Term)) {
+    llvm::ImmutableSet<const CFGBlock *>::Factory F;
+    auto newState = State->set<UnrolledLoopBlocks>(Term, F.getEmptySet());
+    LoopVisitor LV(newState, AMgr, StmtToBlockMap, Term);
+    LV.Visit(Term);
+
+    int Cnt = 0;
+    for (auto E : LV.getState()->get<UnrolledLoopBlocks>()) {
+      (void) E;
+      Cnt++;
+    }
+    NumTimesLoopUnrolled = Cnt;
+    return LV.getState();
+  }
+  return State;
+}
+}
+}
