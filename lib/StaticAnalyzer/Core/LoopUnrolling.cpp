@@ -40,36 +40,37 @@ REGISTER_MAP_WITH_PROGRAMSTATE(UnrolledLoopBlocks, const Stmt *,
 
 class LoopVisitor : public ConstStmtVisitor<LoopVisitor> {
 public:
-    LoopVisitor(AnalysisManager& AMgr, CFGStmtMap* M):
-            AMgr(AMgr),StmtToBlockMap(M){}
+    LoopVisitor(ProgramStateRef State, AnalysisManager& AMgr, CFGStmtMap* M):
+            State(State), AMgr(AMgr),StmtToBlockMap(M){}
 
     void VisitChildren(const Stmt* S){
       for (const Stmt *Child : S->children())
         if(Child)
           Visit(Child);
     }
-/*
+
     void VisitStmt(const Stmt* S) {
-      //S->dump();
       if (!S ||
-          (isa<ForStmt>(S) && UnrolledLoops.find(S) == UnrolledLoops.end()))
+          (isa<ForStmt>(S) && !State->contains<UnrolledLoopBlocks>(S)))
         return;
-      //S->dump();
-      ExceptionBlocks.insert(StmtToBlockMap->getBlock(S));
+      auto BlockSet = *State->get<UnrolledLoopBlocks>(S);
+      BlockSet = F.add(BlockSet,StmtToBlockMap->getBlock(S));
       if (auto CallExp = dyn_cast<CallExpr>(S)) {
         auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
         for (CFG::const_iterator BlockIt = CalleeCFG->begin();
              BlockIt != CalleeCFG->end(); BlockIt++) {
-          ExceptionBlocks.insert(*BlockIt);
+             BlockSet = F.add(BlockSet,StmtToBlockMap->getBlock(S));
         }
       }
       VisitChildren(S);
-    }*/
+    }
 private:
+    ProgramStateRef State;
     AnalysisManager& AMgr;
     CFGStmtMap* StmtToBlockMap;
-};
 
+    llvm::ImmutableSet<const CFGBlock *>::Factory F;
+};
 
 bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx,
                             ExplodedNode *Pred) {
