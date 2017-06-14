@@ -59,16 +59,18 @@ public:
   void VisitStmt(const Stmt *S) {
     if (!S || (isa<ForStmt>(S) && !State->contains<UnrolledLoopBlocks>(S)))
       return;
-    auto BlockSet = *State->get<UnrolledLoopBlocks>(LoopStmt);
+    llvm::ImmutableSet<const CFGBlock *> BlockSet = *State->get<UnrolledLoopBlocks>(LoopStmt);
+    if(StmtToBlockMap->getBlock(S))
     BlockSet = F.add(BlockSet, StmtToBlockMap->getBlock(S));
     if (auto CallExp = dyn_cast<CallExpr>(S)) {
       auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
       for (CFG::const_iterator BlockIt = CalleeCFG->begin();
            BlockIt != CalleeCFG->end(); BlockIt++) {
-        BlockSet = F.add(BlockSet, StmtToBlockMap->getBlock(S));
+        if(*BlockIt)
+        BlockSet = F.add(BlockSet, *BlockIt);
       }
     }
-    State = State->set<UnrolledLoopBlocks>(S, BlockSet);
+    State = State->set<UnrolledLoopBlocks>(LoopStmt, BlockSet);
     VisitChildren(S);
   }
 
@@ -122,10 +124,13 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
 
 bool isUnrolledLoopBlock(ProgramStateRef State, const CFGBlock *Block) {
   UnrolledLoopBlocksTy ULB = State->get<UnrolledLoopBlocks>();
-  for (UnrolledLoopBlocksTy::value_type &E : ULB) {
-    if (E.second.isEmpty())
-      llvm::errs() << "DUDE\n";
-      return true;
+  for (const UnrolledLoopBlocksTy::value_type E : ULB) {
+    llvm::errs() << E.first << " ";
+    E.first->dump();
+    //for(auto asd : E.second)
+    //  llvm::errs() << asd << "   Dude\n";
+    //if (E.second.contains(Block))
+    //  return true;
   }
   return false;
 }
@@ -147,9 +152,26 @@ ProgramStateRef markBlocksAsUnrolled(ProgramStateRef State,
       Cnt++;
     }
     NumTimesLoopUnrolled = Cnt;
+
+    UnrolledLoopBlocksTy ULB = LV.getState()->get<UnrolledLoopBlocks>();
+    for (const UnrolledLoopBlocksTy::value_type E : ULB) {
+      for (auto asd : E.second)
+        llvm::errs() << asd << "   Dude\n";
+    }
     return LV.getState();
   }
   return State;
 }
+
+void undorfuggveny(ProgramStateRef barnameleg){
+  //barnameleg->dump();
+  llvm::errs()<<"FUJJJJJJJJJ\n";
+  UnrolledLoopBlocksTy ULB = barnameleg->get<UnrolledLoopBlocks>();
+  for (const UnrolledLoopBlocksTy::value_type E : ULB) {
+    for (auto asd : E.second)
+      llvm::errs() << asd << "   Dude\n";
+  }
+}
+
 }
 }
