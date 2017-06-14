@@ -39,8 +39,6 @@ using namespace clang::ast_matchers;
 STATISTIC(NumTimesLoopUnrolled,
           "The # of times a loop is got completely unrolled");
 
-
-
 REGISTER_MAP_WITH_PROGRAMSTATE(UnrolledLoopBlocks, const Stmt *,
                                llvm::ImmutableSet<const CFGBlock *>)
 namespace clang {
@@ -153,23 +151,17 @@ ProgramStateRef markBlocksAsUnrolled(ProgramStateRef State,
     }
     NumTimesLoopUnrolled = Cnt;
 
-    UnrolledLoopBlocksTy ULB = LV.getState()->get<UnrolledLoopBlocks>();
-    for (const UnrolledLoopBlocksTy::value_type E : ULB) {
-      for (auto asd : E.second)
-        llvm::errs() << asd << "   Dude\n";
-    }
     return LV.getState();
   }
   return State;
 }
 
-void undorfuggveny(ProgramStateRef barnameleg){
-  //barnameleg->dump();
-  llvm::errs()<<"FUJJJJJJJJJ\n";
-  UnrolledLoopBlocksTy ULB = barnameleg->get<UnrolledLoopBlocks>();
+void stateTesting(ProgramStateRef State, std::string ErrorString){
+  llvm::errs() << "STATE TEST " << ErrorString << "\n";
+  UnrolledLoopBlocksTy ULB = State->get<UnrolledLoopBlocks>();
   for (const UnrolledLoopBlocksTy::value_type E : ULB) {
-    for (auto asd : E.second)
-      llvm::errs() << asd << "   Dude\n";
+    for (auto Block : E.second)
+      llvm::errs() << Block << "  " << ErrorString << "\n";
   }
 }
 

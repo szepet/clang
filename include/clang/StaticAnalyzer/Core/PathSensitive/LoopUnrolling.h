@@ -23,7 +23,7 @@
 
 namespace clang {
     namespace ento {
-        void undorfuggveny(ProgramStateRef barnameleg);
+        void stateTesting(ProgramStateRef State, std::string ErrorString = "");
         ProgramStateRef markBlocksAsUnrolled(ProgramStateRef State,
                                              AnalysisManager &AMgr,
                                              CFGStmtMap *StmtToBlockMap,
