@@ -1496,22 +1496,27 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
   return true;
 }
 
+/*extern llvm::ImmutableMap<const Stmt *, llvm::ImmutableSet<const CFGBlock *>>
+        UnrolledLoopBlocks;*/
+
 /// Block entrance.  (Update counters).
 void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
-
+  undorfuggveny(Pred->getState());
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
   const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
 
   if(shouldCompletelyUnroll(Term,AMgr.getASTContext())){
-    auto UnrolledState = markBlocksAsUnrolled(Pred->getState(),AMgr,
+    ProgramStateRef UnrolledState = markBlocksAsUnrolled(Pred->getState(),AMgr,
                                               Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap(),
                                               Term);
-    nodeBuilder.generateNode(UnrolledState,Pred);
+    //undorfuggveny(UnrolledState);
+    if(UnrolledState != Pred->getState())
+    nodeBuilder.generateNode(UnrolledState, Pred);
     return;
   }
-  if(isUnrolledLoopBlock(Pred->getState(),nodeBuilder.getContext().getBlock()))
+  if(isUnrolledLoopBlock(Pred->getState(), nodeBuilder.getContext().getBlock()))
     return;
   /*
   if (Term && isa<ForStmt>(Term) && shouldCompletelyUnroll(Term, AMgr.getASTContext(), Pred)) {

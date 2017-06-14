@@ -18,8 +18,12 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/AnalysisManager.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
+
 namespace clang {
     namespace ento {
+        void undorfuggveny(ProgramStateRef barnameleg);
         ProgramStateRef markBlocksAsUnrolled(ProgramStateRef State,
                                              AnalysisManager &AMgr,
                                              CFGStmtMap *StmtToBlockMap,
