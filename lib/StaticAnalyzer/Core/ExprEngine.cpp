@@ -1503,36 +1503,21 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
 void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
-  undorfuggveny(Pred->getState());
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
+  stateTesting(Pred->getState(), "Simple");
   const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
 
   if(shouldCompletelyUnroll(Term,AMgr.getASTContext())){
     ProgramStateRef UnrolledState = markBlocksAsUnrolled(Pred->getState(),AMgr,
                                               Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap(),
                                               Term);
-    //undorfuggveny(UnrolledState);
+    stateTesting(UnrolledState, "JustReturned");
     if(UnrolledState != Pred->getState())
     nodeBuilder.generateNode(UnrolledState, Pred);
     return;
   }
   if(isUnrolledLoopBlock(Pred->getState(), nodeBuilder.getContext().getBlock()))
     return;
-  /*
-  if (Term && isa<ForStmt>(Term) && shouldCompletelyUnroll(Term, AMgr.getASTContext(), Pred)) {
-    if(UnrolledLoops.find(Term)==UnrolledLoops.end()) {
-      UnrolledLoops.insert(Term);
-      v.Visit(Term);
-    }
-    NumTimesLoopUnrolled = UnrolledLoops.size();
-    return;
-  }
-  auto PrevState = Pred->getState();
-  auto ULB = PrevState->get<UnrolledLoopBlocks>();
-
-  if(ExceptionBlocks.find(nodeBuilder.getContext().getBlock()) != ExceptionBlocks.end()){
-    return;
-  }*/
 
   // If this block is terminated by a loop and it has already been visited the
   // maximum number of times, widen the loop
