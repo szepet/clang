@@ -17,6 +17,7 @@
 #include "PrettyStackTraceLocationContext.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/AST/StmtVisitor.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/ParentMap.h"
 #include "clang/Analysis/CFGStmtMap.h"
@@ -31,6 +32,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/AnalysisManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/LoopWidening.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/LoopUnrolling.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/raw_ostream.h"
@@ -41,7 +43,6 @@
 
 using namespace clang;
 using namespace ento;
-using namespace clang::ast_matchers;
 using llvm::APSInt;
 
 #define DEBUG_TYPE "ExprEngine"
@@ -56,9 +57,6 @@ STATISTIC(NumMaxBlockCountReachedInInlined,
             "an inlined function");
 STATISTIC(NumTimesRetriedWithoutInlining,
             "The # of times we re-evaluated a call without inlining");
-
-STATISTIC(NumTimesLoopUnrolled,
-          "The # of times a loop is got completely unrolled");
 
 typedef std::pair<const CXXBindTemporaryExpr *, const StackFrameContext *>
     CXXBindTemporaryContext;
@@ -1498,107 +1496,38 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
   return true;
 }
 
-static bool areSameVariable(const ValueDecl *First, const ValueDecl *Second) {
-  return First && Second &&
-         First->getCanonicalDecl() == Second->getCanonicalDecl();
-}
+/*extern llvm::ImmutableMap<const Stmt *, llvm::ImmutableSet<const CFGBlock *>>
+        UnrolledLoopBlocks;*/
 
-static StatementMatcher LoopMatcher =
-        forStmt(hasLoopInit(anyOf(declStmt(hasSingleDecl(varDecl(hasInitializer(integerLiteral())).bind("initVarName"))), binaryOperator(hasLHS(declRefExpr(to(varDecl().bind("initVarName")))),hasRHS(integerLiteral())))),
-                hasIncrement(unaryOperator(
-                        hasOperatorName("++"),
-                        hasUnaryOperand(declRefExpr(
-                                to(varDecl(hasType(isInteger())).bind("incVarName")))))),
-                hasCondition(binaryOperator(
-                        anyOf(hasOperatorName("<"),hasOperatorName(">"),hasOperatorName("<="),hasOperatorName(">=")),
-                        hasLHS(ignoringParenImpCasts(declRefExpr(
-                                to(varDecl(hasType(isInteger())).bind("condVarName"))))),
-                        hasRHS(/*expr(hasType(isInteger()))*/ integerLiteral().bind("bound")))),
-                unless(hasBody(/*anyOf(*/hasDescendant(declRefExpr(to(varDecl(equalsBoundNode("initVarName"))))/*),
-                                     hasDescendant(declRefExpr(ignoringImpCasts(hasType(pointsTo(isInteger())))))*/)))
-        ).bind("forLoop");
-
-static bool shouldCompletelyUnroll(const Stmt* LoopStmt, ASTContext& ASTCtx, ExplodedNode* Pred) {
-  if (/*const ForStmt* ForLoop = */dyn_cast_or_null<ForStmt>(LoopStmt)) {
-    auto Matches = match(LoopMatcher, *LoopStmt, ASTCtx);
-    if(Matches.empty())
-      return false;
-    const VarDecl *IncVar = Matches[0].getNodeAs<VarDecl>("incVarName");
-    const VarDecl *CondVar = Matches[0].getNodeAs<VarDecl>("condVarName");
-    const VarDecl *InitVar = Matches[0].getNodeAs<VarDecl>("initVarName");
-    const Expr *Bound = Matches[0].getNodeAs<Expr>("bound");
-    if (!areSameVariable(IncVar, CondVar) || !areSameVariable(IncVar, InitVar))
-      return false;
-/*    auto State = Pred->getState();
-    auto BoundVal = State->getSVal(Bound,Pred->getLocationContext());
-   // llvm::errs() << BoundVal.getAsSymExpr() << "\n";
-    Bound->dump();
-    BoundVal.dump();
-    llvm::errs() << (nullptr == BoundVal.getAsSymbolicExpression()) << "\n";
-    llvm::errs() << State->getConstraintManager().getSymVal(State, BoundVal.getAsSymbol()) << "\n";
-
-   llvm::errs() << BoundVal.isConstant() << "\n";
-    if(BoundVal.getAs<clang::ento::DefinedSVal>())
-      llvm::errs() << "WASD1\n";
-    if(BoundVal.getAs<clang::ento::DefinedOrUnknownSVal>())
-      llvm::errs() << "WASD2\n";
-    if(BoundVal.getAs<clang::ento::Loc>())
-      llvm::errs() << "WASD3\n";
-*/
-    //if(auto Val = State->getConstraintManager().getSymVal(State, BoundVal.getAsSymExpr()))
-    //llvm::errs() << *Val << "\n";
-    //llvm::errs() << Matches.size() << "\n";
-    //llvm::errs() << !Matches.empty() << "\n";
-  }
-  return true;
-}
-std::set<const CFGBlock*> ExceptionBlocks;
-std::set<const Stmt*> ExceptionStmts;
-std::set<const Stmt*> UnrolledLoops;
-CFGStmtMap * m;
-
-class LoopVisitor : public RecursiveASTVisitor<LoopVisitor> {
-public:
-    bool dataTraverseStmtPre(Stmt *x) {
-      if(x && isa<ForStmt>(x) && UnrolledLoops.find(const_cast<const Stmt*>(x)) == UnrolledLoops.end())
-        return false;
-      return true;
-    }
-    bool VisitStmt(const Stmt *x) {
-      if(x) {
-        //ExceptionStmts.insert(x);
-        ExceptionBlocks.insert(m->getBlock(x));
-      }
-      return true;
-    }
-};
 /// Block entrance.  (Update counters).
 void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
-  LoopVisitor v;
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
-  const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
-  m = Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap();
-  if (Term && isa<ForStmt>(Term) && shouldCompletelyUnroll(Term, AMgr.getASTContext(), Pred)) {
-    if(UnrolledLoops.find(Term)==UnrolledLoops.end()) {
-      UnrolledLoops.insert(Term);
-      //ExceptionStmts.insert(nullptr);
-      v.TraverseStmt(const_cast<Stmt *>(Term));
-      //Term->dump();
-      //Term->printPretty(llvm::errs(),nullptr,AMgr.getASTContext().getPrintingPolicy());
-    }
-    NumTimesLoopUnrolled = UnrolledLoops.size();
-    return;
-  }
 
-  if(ExceptionBlocks.find(nodeBuilder.getContext().getBlock()) != ExceptionBlocks.end()){
-    return;
+  // If this block is terminated by a loop which has a known bound (and meets
+  // other constraints) then consider completely unrolling it.
+  if (AMgr.options.shouldUnrollLoops()) {
+    const CFGBlock *ActualBlock = nodeBuilder.getContext().getBlock();
+    const Stmt *Term = ActualBlock->getTerminator();
+    if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext())) {
+      ProgramStateRef UnrolledState = markBlocksAsUnrolled(
+              Term, Pred->getState(), AMgr, Pred->getLocationContext()
+                      ->getAnalysisDeclContext()
+                      ->getCFGStmtMap());
+      if (UnrolledState != Pred->getState())
+        nodeBuilder.generateNode(UnrolledState, Pred);
+      return;
+    }
+
+    if (isUnrolledLoopBlock(ActualBlock, Pred->getState()))
+      return;
+    if (ActualBlock->empty())
+      return;
   }
 
   // If this block is terminated by a loop and it has already been visited the
   // maximum number of times, widen the loop
-
   unsigned int BlockCount = nodeBuilder.getContext().blockCount();
   if (BlockCount == AMgr.options.maxBlockVisitOnPath - 1 &&
       AMgr.options.shouldWidenLoops()) {
@@ -1619,9 +1548,6 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     static SimpleProgramPointTag tag(TagProviderName, "Block count exceeded");
     const ExplodedNode *Sink =
                    nodeBuilder.generateSink(Pred->getState(), Pred, &tag);
-    //const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
-    //if(Term)Term->dump();
-    //nodeBuilder.getContext().getBlock()->dump();
     // Check if we stopped at the top level function or not.
     // Root node should have the location context of the top most function.
     const LocationContext *CalleeLC = Pred->getLocation().getLocationContext();
