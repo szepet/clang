@@ -89,47 +89,68 @@ private:
   const Stmt *LoopStmt;
 };
 
-internal::Matcher<Stmt> forLoopMatcher() {
-  return forStmt(hasLoopInit(anyOf(
-          declStmt(hasSingleDecl(varDecl(hasInitializer(integerLiteral()))
-                                         .bind("initVarName"))),
-          binaryOperator(
-                  hasLHS(declRefExpr(to(varDecl().bind("initVarName")))),
-                  hasRHS(integerLiteral())))),
-                 hasIncrement(unaryOperator(
-                         hasOperatorName("++"),
-                         hasUnaryOperand(declRefExpr(to(varDecl(allOf(
-                                 equalsBoundNode("initVarName"),
-                                 hasType(isInteger())))))))),
-                 hasCondition(binaryOperator(
-                         anyOf(hasOperatorName("<"), hasOperatorName(">"),
-                               hasOperatorName("<="), hasOperatorName(">=")),
-                         hasLHS(ignoringParenImpCasts(
-                                 declRefExpr(to(varDecl(allOf(
-                                         equalsBoundNode("initVarName"),
-                                         hasType(isInteger()))))))),
-                         hasRHS(integerLiteral().bind("bound")))),
-                 unless(hasBody(anyOf(
-                         hasDescendant(callExpr(forEachArgumentWithParam(
-                                 declRefExpr(hasDeclaration(
-                                         equalsBoundNode("initVarName"))),
-                                 parmVarDecl(hasType(
-                                         references(qualType(
-                                                 unless(isConstQualified())))))))),
-                         hasDescendant(expr(unaryOperator(
-                                 hasOperatorName("&"),
-                                 hasUnaryOperand(declRefExpr(
-                                         hasDeclaration(equalsBoundNode(
-                                                 "initVarName"))))))))))).bind(
-          "forLoop");
+static internal::Matcher<Stmt> forLoopMatcher() {
+  return forStmt(
+             hasLoopInit(anyOf(
+                 declStmt(
+                     hasSingleDecl(varDecl(hasInitializer(integerLiteral()))
+                                       .bind("initVarName"))),
+                 binaryOperator(
+                     hasLHS(declRefExpr(to(varDecl().bind("initVarName")))),
+                     hasRHS(integerLiteral())))),
+             hasIncrement(
+                 unaryOperator(hasOperatorName("++"),
+                               hasUnaryOperand(declRefExpr(to(
+                                   varDecl(allOf(equalsBoundNode("initVarName"),
+                                                 hasType(isInteger())))))))),
+             hasCondition(binaryOperator(
+                 anyOf(hasOperatorName("<"), hasOperatorName(">"),
+                       hasOperatorName("<="), hasOperatorName(">=")),
+                 hasLHS(ignoringParenImpCasts(declRefExpr(to(varDecl(allOf(
+                     equalsBoundNode("initVarName"), hasType(isInteger()))))))),
+                 hasRHS(integerLiteral().bind("bound")))),
+             unless(hasBody(anyOf(
+                 hasDescendant(callExpr(forEachArgumentWithParam(
+                     declRefExpr(
+                         hasDeclaration(equalsBoundNode("initVarName"))),
+                     parmVarDecl(hasType(
+                         references(qualType(unless(isConstQualified())))))))),
+                 hasDescendant(expr(unaryOperator(
+                     hasOperatorName("&"),
+                     hasUnaryOperand(declRefExpr(hasDeclaration(equalsBoundNode(
+                         "initVarName"))))))))))).bind("forLoop");
 }
+
+static internal::Matcher<Stmt> whileLoopMatcher() {
+  return whileStmt(
+             hasCondition(binaryOperator(
+                 anyOf(hasOperatorName("<"), hasOperatorName(">"),
+                       hasOperatorName("<="), hasOperatorName(">=")),
+                 hasLHS(ignoringParenImpCasts(declRefExpr(
+                     to(varDecl(hasType(isInteger())).bind("initVarName"))))),
+                 hasRHS(integerLiteral().bind("bound")))),
+             unless(hasBody(anyOf(
+                 hasDescendant(callExpr(forEachArgumentWithParam(
+                     declRefExpr(
+                         hasDeclaration(equalsBoundNode("initVarName"))),
+                     parmVarDecl(hasType(
+                         references(qualType(unless(isConstQualified())))))))),
+                 hasDescendant(expr(unaryOperator(
+                     hasOperatorName("&"),
+                     hasUnaryOperand(declRefExpr(hasDeclaration(equalsBoundNode(
+                         "initVarName"))))))))))).bind("whileLoop");
+}
+
 bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
 
   if (!isLoopStmt(LoopStmt))
     return false;
 
-  auto Matches = match(forLoopMatcher(), *LoopStmt, ASTCtx);
-
+  MatchFinder FindLoop;
+  auto Matches = match(whileLoopMatcher(), *LoopStmt, ASTCtx);
+  if(!Matches.empty())
+    return true;
+  Matches = match(forLoopMatcher(), *LoopStmt, ASTCtx);
   return !Matches.empty();
 }
 
