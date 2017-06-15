@@ -128,6 +128,11 @@ static internal::Matcher<Stmt> whileLoopMatcher() {
                  hasLHS(ignoringParenImpCasts(declRefExpr(
                      to(varDecl(hasType(isInteger())).bind("initVarName"))))),
                  hasRHS(integerLiteral().bind("bound")))),
+             hasBody(hasDescendant(
+                 unaryOperator(hasOperatorName("++"),
+                               hasUnaryOperand(declRefExpr(to(
+                                   varDecl(allOf(equalsBoundNode("initVarName"),
+                                                 hasType(isInteger()))))))))),
              unless(hasBody(anyOf(
                  hasDescendant(callExpr(forEachArgumentWithParam(
                      declRefExpr(
@@ -147,7 +152,7 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
 
   MatchFinder FindLoop;
   auto Matches = match(whileLoopMatcher(), *LoopStmt, ASTCtx);
-  if(!Matches.empty())
+  if (!Matches.empty())
     return true;
   Matches = match(forLoopMatcher(), *LoopStmt, ASTCtx);
   return !Matches.empty();
