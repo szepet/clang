@@ -1518,6 +1518,8 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
 
   if(isUnrolledLoopBlock(ActualBlock, Pred->getState()))
     return;
+  if(ActualBlock->empty())
+    return;
 
   // If this block is terminated by a loop and it has already been visited the
   // maximum number of times, widen the loop

@@ -67,14 +67,13 @@ public:
     if (!S || (isLoopStmt(S) && S != LoopStmt))
       return;
 
-    if (StmtToBlockMap->getBlock(S))
-      State = State->add<UnrolledLoopBlocks>(StmtToBlockMap->getBlock(S));
+    assert(StmtToBlockMap->getBlock(S));
+    State = State->add<UnrolledLoopBlocks>(StmtToBlockMap->getBlock(S));
     if (auto CallExp = dyn_cast<CallExpr>(S)) {
       auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
       for (CFG::const_iterator BlockIt = CalleeCFG->begin();
            BlockIt != CalleeCFG->end(); BlockIt++) {
-        if (*BlockIt)
-          State = State->add<UnrolledLoopBlocks>(*BlockIt);
+        State = State->add<UnrolledLoopBlocks>(*BlockIt);
       }
     }
     VisitChildren(S);
