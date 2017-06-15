@@ -44,6 +44,13 @@ REGISTER_SET_WITH_PROGRAMSTATE(UnrolledLoopBlocks, const CFGBlock *)
 
 namespace clang {
 namespace ento {
+
+static bool isLoopStmt(const Stmt *S) {
+  // if(!S)
+  //  return false;
+  return S && (isa<ForStmt>(S) || isa<WhileStmt>(S) || isa<DoStmt>(S));
+}
+
 class LoopVisitor : public ConstStmtVisitor<LoopVisitor> {
 public:
   LoopVisitor(ProgramStateRef St, AnalysisManager &AMgr, CFGStmtMap *M,
@@ -57,7 +64,7 @@ public:
   }
 
   void VisitStmt(const Stmt *S) {
-    if (!S || (isa<ForStmt>(S) && S != LoopStmt))
+    if (!S || (isLoopStmt(S) && S != LoopStmt))
       return;
 
     if (StmtToBlockMap->getBlock(S))
@@ -82,42 +89,48 @@ private:
   const Stmt *LoopStmt;
 };
 
-bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
-  auto LoopMatcher =
-      forStmt(
-          hasLoopInit(anyOf(
-              declStmt(hasSingleDecl(varDecl(hasInitializer(integerLiteral()))
+internal::Matcher<Stmt> forLoopMatcher() {
+  return forStmt(hasLoopInit(anyOf(
+          declStmt(hasSingleDecl(varDecl(hasInitializer(integerLiteral()))
                                          .bind("initVarName"))),
-              binaryOperator(
+          binaryOperator(
                   hasLHS(declRefExpr(to(varDecl().bind("initVarName")))),
                   hasRHS(integerLiteral())))),
-          hasIncrement(unaryOperator(
-              hasOperatorName("++"),
-              hasUnaryOperand(declRefExpr(to(varDecl(allOf(
-                  equalsBoundNode("initVarName"), hasType(isInteger())))))))),
-          hasCondition(binaryOperator(
-              anyOf(hasOperatorName("<"), hasOperatorName(">"),
-                    hasOperatorName("<="), hasOperatorName(">=")),
-              hasLHS(ignoringParenImpCasts(declRefExpr(to(varDecl(allOf(
-                  equalsBoundNode("initVarName"), hasType(isInteger()))))))),
-              hasRHS(integerLiteral().bind("bound")))),
-          unless(hasBody(anyOf(
-              hasDescendant(callExpr(forEachArgumentWithParam(
-                  declRefExpr(hasDeclaration(equalsBoundNode("initVarName"))),
-                  parmVarDecl(hasType(
-                      references(qualType(unless(isConstQualified())))))))),
-              hasDescendant(expr(unaryOperator(
-                  hasOperatorName("&"),
-                  hasUnaryOperand(declRefExpr(hasDeclaration(
-                      equalsBoundNode("initVarName"))))))))))).bind("forLoop");
+                 hasIncrement(unaryOperator(
+                         hasOperatorName("++"),
+                         hasUnaryOperand(declRefExpr(to(varDecl(allOf(
+                                 equalsBoundNode("initVarName"),
+                                 hasType(isInteger())))))))),
+                 hasCondition(binaryOperator(
+                         anyOf(hasOperatorName("<"), hasOperatorName(">"),
+                               hasOperatorName("<="), hasOperatorName(">=")),
+                         hasLHS(ignoringParenImpCasts(
+                                 declRefExpr(to(varDecl(allOf(
+                                         equalsBoundNode("initVarName"),
+                                         hasType(isInteger()))))))),
+                         hasRHS(integerLiteral().bind("bound")))),
+                 unless(hasBody(anyOf(
+                         hasDescendant(callExpr(forEachArgumentWithParam(
+                                 declRefExpr(hasDeclaration(
+                                         equalsBoundNode("initVarName"))),
+                                 parmVarDecl(hasType(
+                                         references(qualType(
+                                                 unless(isConstQualified())))))))),
+                         hasDescendant(expr(unaryOperator(
+                                 hasOperatorName("&"),
+                                 hasUnaryOperand(declRefExpr(
+                                         hasDeclaration(equalsBoundNode(
+                                                 "initVarName"))))))))))).bind(
+          "forLoop");
+}
+bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
 
-  if (dyn_cast_or_null<ForStmt>(LoopStmt)) {
-    auto Matches = match(LoopMatcher, *LoopStmt, ASTCtx);
-    if (Matches.empty())
-      return false;
-    return true;
-  }
-  return false;
+  if (!isLoopStmt(LoopStmt))
+    return false;
+
+  auto Matches = match(forLoopMatcher(), *LoopStmt, ASTCtx);
+
+  return !Matches.empty();
 }
 
 bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State) {
