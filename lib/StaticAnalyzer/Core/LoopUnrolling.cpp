@@ -37,9 +37,8 @@ using namespace clang::ast_matchers;
 #define DEBUG_TYPE "LoopUnrolling"
 
 STATISTIC(NumTimesLoopUnrolled,
-          "The # of times a loop is got completely unrolled");
+          "The # of times a loop has got completely unrolled");
 
-typedef std::pair<llvm::ImmutableSet<const CFGBlock *>::Factory, llvm::ImmutableSet<const CFGBlock *>> UnrolledBlocksPair;
 REGISTER_SET_WITH_PROGRAMSTATE(UnrolledLoops, const Stmt *)
 REGISTER_SET_WITH_PROGRAMSTATE(UnrolledLoopBlocks, const CFGBlock *)
 
@@ -47,7 +46,8 @@ namespace clang {
 namespace ento {
 class LoopVisitor : public ConstStmtVisitor<LoopVisitor> {
 public:
-  LoopVisitor(ProgramStateRef St, AnalysisManager &AMgr, CFGStmtMap *M,const Stmt* Term )
+  LoopVisitor(ProgramStateRef St, AnalysisManager &AMgr, CFGStmtMap *M,
+              const Stmt *Term)
       : State(St), AMgr(AMgr), StmtToBlockMap(M), LoopStmt(Term) {}
 
   void VisitChildren(const Stmt *S) {
@@ -60,13 +60,13 @@ public:
     if (!S || (isa<ForStmt>(S) && S != LoopStmt))
       return;
 
-    if(StmtToBlockMap->getBlock(S))
-    State = State->add<UnrolledLoopBlocks>(StmtToBlockMap->getBlock(S));
+    if (StmtToBlockMap->getBlock(S))
+      State = State->add<UnrolledLoopBlocks>(StmtToBlockMap->getBlock(S));
     if (auto CallExp = dyn_cast<CallExpr>(S)) {
       auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
       for (CFG::const_iterator BlockIt = CalleeCFG->begin();
            BlockIt != CalleeCFG->end(); BlockIt++) {
-        if(*BlockIt)
+        if (*BlockIt)
           State = State->add<UnrolledLoopBlocks>(*BlockIt);
       }
     }
@@ -74,11 +74,12 @@ public:
   }
 
   ProgramStateRef getState() { return State; }
+
 private:
   ProgramStateRef State;
   AnalysisManager &AMgr;
   CFGStmtMap *StmtToBlockMap;
-  const Stmt* LoopStmt;
+  const Stmt *LoopStmt;
 };
 
 bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
@@ -119,14 +120,13 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
   return false;
 }
 
-bool isUnrolledLoopBlock(ProgramStateRef State, const CFGBlock *Block) {
+bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State) {
   return State->contains<UnrolledLoopBlocks>(Block);
 }
 
-ProgramStateRef markBlocksAsUnrolled(ProgramStateRef State,
+ProgramStateRef markBlocksAsUnrolled(const Stmt *Term, ProgramStateRef State,
                                      AnalysisManager &AMgr,
-                                     CFGStmtMap *StmtToBlockMap,
-                                     const Stmt *Term) {
+                                     CFGStmtMap *StmtToBlockMap) {
   if (State->contains<UnrolledLoops>(Term))
     return State;
 
@@ -135,16 +135,14 @@ ProgramStateRef markBlocksAsUnrolled(ProgramStateRef State,
   LoopVisitor LV(State, AMgr, StmtToBlockMap, Term);
   LV.Visit(Term);
   return LV.getState();
-
 }
 
-void stateTesting(ProgramStateRef State, std::string ErrorString){
+void stateTesting(ProgramStateRef State, std::string ErrorString) {
   llvm::errs() << "STATE TEST " << ErrorString << "\n";
   UnrolledLoopBlocksTy ULB = State->get<UnrolledLoopBlocks>();
-  for (const UnrolledLoopBlocksTy::value_type& E : ULB) {
-      llvm::errs() << E << "  " << ErrorString << "\n";
+  for (const UnrolledLoopBlocksTy::value_type &E : ULB) {
+    llvm::errs() << E << "  " << ErrorString << "\n";
   }
 }
-
 }
 }

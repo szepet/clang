@@ -1504,28 +1504,26 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
-  stateTesting(Pred->getState(), "Simple");
-  const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
+  const CFGBlock* ActualBlock = nodeBuilder.getContext().getBlock();
 
-  if(shouldCompletelyUnroll(Term,AMgr.getASTContext())){
-    ProgramStateRef UnrolledState = markBlocksAsUnrolled(Pred->getState(),AMgr,
-                                              Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap(),
-                                              Term);
-    stateTesting(UnrolledState, "JustReturned");
+  //Unrolling stuff
+  const Stmt *Term = ActualBlock->getTerminator();
+  if(Term && shouldCompletelyUnroll(Term, AMgr.getASTContext())){
+    ProgramStateRef UnrolledState = markBlocksAsUnrolled(Term, Pred->getState(), AMgr,
+                                              Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap());
     if(UnrolledState != Pred->getState())
-    nodeBuilder.generateNode(UnrolledState, Pred);
+      nodeBuilder.generateNode(UnrolledState, Pred);
     return;
   }
-  if(isUnrolledLoopBlock(Pred->getState(), nodeBuilder.getContext().getBlock()))
+
+  if(isUnrolledLoopBlock(ActualBlock, Pred->getState()))
     return;
 
   // If this block is terminated by a loop and it has already been visited the
   // maximum number of times, widen the loop
-
   unsigned int BlockCount = nodeBuilder.getContext().blockCount();
   if (BlockCount == AMgr.options.maxBlockVisitOnPath - 1 &&
       AMgr.options.shouldWidenLoops()) {
-    const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
     if (!(Term &&
           (isa<ForStmt>(Term) || isa<WhileStmt>(Term) || isa<DoStmt>(Term))))
       return;
