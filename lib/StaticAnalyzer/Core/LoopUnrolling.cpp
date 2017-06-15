@@ -29,7 +29,7 @@
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/AST/StmtVisitor.h"
 #include "PrettyStackTraceLocationContext.h"
-
+#include <utility>
 using namespace clang;
 using namespace ento;
 using namespace clang::ast_matchers;
@@ -39,14 +39,16 @@ using namespace clang::ast_matchers;
 STATISTIC(NumTimesLoopUnrolled,
           "The # of times a loop is got completely unrolled");
 
-REGISTER_MAP_WITH_PROGRAMSTATE(UnrolledLoopBlocks, const Stmt *,
-                               llvm::ImmutableSet<const CFGBlock *>)
+typedef std::pair<llvm::ImmutableSet<const CFGBlock *>::Factory, llvm::ImmutableSet<const CFGBlock *>> UnrolledBlocksPair;
+REGISTER_SET_WITH_PROGRAMSTATE(UnrolledLoops, const Stmt *)
+REGISTER_SET_WITH_PROGRAMSTATE(UnrolledLoopBlocks, const CFGBlock *)
+
 namespace clang {
 namespace ento {
 class LoopVisitor : public ConstStmtVisitor<LoopVisitor> {
 public:
-  LoopVisitor(ProgramStateRef State, AnalysisManager &AMgr, CFGStmtMap *M,const Stmt* Term )
-      : State(State), AMgr(AMgr), StmtToBlockMap(M), LoopStmt(Term) {}
+  LoopVisitor(ProgramStateRef St, AnalysisManager &AMgr, CFGStmtMap *M,const Stmt* Term )
+      : State(St), AMgr(AMgr), StmtToBlockMap(M), LoopStmt(Term) {}
 
   void VisitChildren(const Stmt *S) {
     for (const Stmt *Child : S->children())
@@ -55,31 +57,28 @@ public:
   }
 
   void VisitStmt(const Stmt *S) {
-    if (!S || (isa<ForStmt>(S) && !State->contains<UnrolledLoopBlocks>(S)))
+    if (!S || (isa<ForStmt>(S) && S != LoopStmt))
       return;
-    llvm::ImmutableSet<const CFGBlock *> BlockSet = *State->get<UnrolledLoopBlocks>(LoopStmt);
+
     if(StmtToBlockMap->getBlock(S))
-    BlockSet = F.add(BlockSet, StmtToBlockMap->getBlock(S));
+    State = State->add<UnrolledLoopBlocks>(StmtToBlockMap->getBlock(S));
     if (auto CallExp = dyn_cast<CallExpr>(S)) {
       auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
       for (CFG::const_iterator BlockIt = CalleeCFG->begin();
            BlockIt != CalleeCFG->end(); BlockIt++) {
         if(*BlockIt)
-        BlockSet = F.add(BlockSet, *BlockIt);
+          State = State->add<UnrolledLoopBlocks>(*BlockIt);
       }
     }
-    State = State->set<UnrolledLoopBlocks>(LoopStmt, BlockSet);
     VisitChildren(S);
   }
 
   ProgramStateRef getState() { return State; }
-
 private:
   ProgramStateRef State;
   AnalysisManager &AMgr;
   CFGStmtMap *StmtToBlockMap;
   const Stmt* LoopStmt;
-  llvm::ImmutableSet<const CFGBlock *>::Factory F;
 };
 
 bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
@@ -121,47 +120,29 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
 }
 
 bool isUnrolledLoopBlock(ProgramStateRef State, const CFGBlock *Block) {
-  UnrolledLoopBlocksTy ULB = State->get<UnrolledLoopBlocks>();
-  for (const UnrolledLoopBlocksTy::value_type E : ULB) {
-    llvm::errs() << E.first << " ";
-    E.first->dump();
-    //for(auto asd : E.second)
-    //  llvm::errs() << asd << "   Dude\n";
-    //if (E.second.contains(Block))
-    //  return true;
-  }
-  return false;
+  return State->contains<UnrolledLoopBlocks>(Block);
 }
 
 ProgramStateRef markBlocksAsUnrolled(ProgramStateRef State,
                                      AnalysisManager &AMgr,
                                      CFGStmtMap *StmtToBlockMap,
                                      const Stmt *Term) {
+  if (State->contains<UnrolledLoops>(Term))
+    return State;
 
-  if (!State->contains<UnrolledLoopBlocks>(Term)) {
-    llvm::ImmutableSet<const CFGBlock *>::Factory F;
-    auto newState = State->set<UnrolledLoopBlocks>(Term, F.getEmptySet());
-    LoopVisitor LV(newState, AMgr, StmtToBlockMap, Term);
-    LV.Visit(Term);
+  State = State->add<UnrolledLoops>(Term);
+  NumTimesLoopUnrolled++;
+  LoopVisitor LV(State, AMgr, StmtToBlockMap, Term);
+  LV.Visit(Term);
+  return LV.getState();
 
-    int Cnt = 0;
-    for (auto E : LV.getState()->get<UnrolledLoopBlocks>()) {
-      (void) E;
-      Cnt++;
-    }
-    NumTimesLoopUnrolled = Cnt;
-
-    return LV.getState();
-  }
-  return State;
 }
 
 void stateTesting(ProgramStateRef State, std::string ErrorString){
   llvm::errs() << "STATE TEST " << ErrorString << "\n";
   UnrolledLoopBlocksTy ULB = State->get<UnrolledLoopBlocks>();
-  for (const UnrolledLoopBlocksTy::value_type E : ULB) {
-    for (auto Block : E.second)
-      llvm::errs() << Block << "  " << ErrorString << "\n";
+  for (const UnrolledLoopBlocksTy::value_type& E : ULB) {
+      llvm::errs() << E << "  " << ErrorString << "\n";
   }
 }
 
