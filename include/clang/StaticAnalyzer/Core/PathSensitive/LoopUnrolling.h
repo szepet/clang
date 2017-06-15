@@ -7,7 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 ///
-/// TODO: Write something nice
+/// This header contains the declarations of functions which are used to decide
+/// which loops should be completely unrolled and mark their corresponding
+/// CFGBlocks.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -22,15 +24,14 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 
 namespace clang {
-    namespace ento {
-        ProgramStateRef markBlocksAsUnrolled(const Stmt *Term,
-                                             ProgramStateRef State,
-                                             AnalysisManager &AMgr,
-                                             CFGStmtMap *StmtToBlockMap);
-        bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State);
-        bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx);
+namespace ento {
+ProgramStateRef markBlocksAsUnrolled(const Stmt *Term, ProgramStateRef State,
+                                     AnalysisManager &AMgr,
+                                     CFGStmtMap *StmtToBlockMap);
+bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State);
+bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx);
 
-    } // end namespace ento
+} // end namespace ento
 } // end namespace clang
 
 #endif

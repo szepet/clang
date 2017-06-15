@@ -8,28 +8,20 @@
 //===----------------------------------------------------------------------===//
 ///
 /// This file contains functions which are used to decide if a loop worth to be
-/// unrolled.
+/// unrolled. Moreover contains function which mark the CFGBlocks which belongs
+/// to the unrolled loop and store them in ProgramState.
 ///
 //===----------------------------------------------------------------------===//
 
-#include "clang/StaticAnalyzer/Core/PathSensitive/LoopUnrolling.h"
-#include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/CoreEngine.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/SubEngine.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
+#include "clang/Analysis/CFGStmtMap.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/AST/ParentMap.h"
-#include "clang/Analysis/CFGStmtMap.h"
-#include "clang/Basic/Builtins.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
-#include "llvm/ADT/Statistic.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
-#include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/AST/StmtVisitor.h"
-#include "PrettyStackTraceLocationContext.h"
-#include <utility>
+#include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/LoopUnrolling.h"
+#include "llvm/ADT/Statistic.h"
+
 using namespace clang;
 using namespace ento;
 using namespace clang::ast_matchers;
@@ -51,6 +43,111 @@ static bool isLoopStmt(const Stmt *S) {
   return S && (isa<ForStmt>(S) || isa<WhileStmt>(S) || isa<DoStmt>(S));
 }
 
+static internal::Matcher<Stmt> simpleCondition(std::string BindName) {
+  return binaryOperator(anyOf(hasOperatorName("<"), hasOperatorName(">"),
+                              hasOperatorName("<="), hasOperatorName(">=")),
+                        hasEitherOperand(ignoringParenImpCasts(declRefExpr(
+                            to(varDecl(hasType(isInteger())).bind(BindName))))),
+                        hasEitherOperand(integerLiteral()));
+}
+
+static internal::Matcher<Stmt> changeIntBoundNode(std::string NodeName) {
+  return binaryOperator(
+      anyOf(hasOperatorName("="), hasOperatorName("+="), hasOperatorName("/="),
+            hasOperatorName("*="), hasOperatorName("-=")),
+      hasLHS(ignoringParenImpCasts(
+          declRefExpr(to(varDecl(equalsBoundNode(NodeName)))))));
+}
+
+static internal::Matcher<Stmt> callByRef(std::string NodeName) {
+  return hasDescendant(callExpr(forEachArgumentWithParam(
+      declRefExpr(hasDeclaration(equalsBoundNode(NodeName))),
+      parmVarDecl(hasType(references(qualType(unless(isConstQualified()))))))));
+}
+
+static internal::Matcher<Stmt> getAddrTo(std::string NodeName) {
+  return expr(unaryOperator(
+      hasOperatorName("&"),
+      hasUnaryOperand(declRefExpr(hasDeclaration(equalsBoundNode(NodeName))))));
+}
+
+static internal::Matcher<Stmt> forLoopMatcher() {
+  return forStmt(
+             hasCondition(simpleCondition("initVarName")),
+             // Initialization should match the form: 'int i = 6' or 'i = 7'.
+             hasLoopInit(
+                 anyOf(declStmt(hasSingleDecl(
+                           varDecl(allOf(hasInitializer(integerLiteral()),
+                                         equalsBoundNode("initVarName"))))),
+                       binaryOperator(hasLHS(declRefExpr(to(varDecl(
+                                          equalsBoundNode("initVarName"))))),
+                                      hasRHS(integerLiteral())))),
+             // Incrementation should be a simple increment or decrement
+             // operator call.
+             hasIncrement(unaryOperator(
+                 anyOf(hasOperatorName("++"), hasOperatorName("--")),
+                 hasUnaryOperand(declRefExpr(
+                     to(varDecl(allOf(equalsBoundNode("initVarName"),
+                                      hasType(isInteger())))))))),
+             // Escaping and not known mutation of the loop counter is handled
+             // by exclusion of assigning and address-of operators and
+             // pass-by-ref function calls on the loop counter from the body.
+             unless(hasBody(anyOf(changeIntBoundNode("initVarName"),
+                                  callByRef("initVarName"),
+                                  getAddrTo("initVarName"))))).bind("forLoop");
+}
+
+static internal::Matcher<Stmt> whileLoopMatcher() {
+  return whileStmt(hasCondition(simpleCondition("initVarName")),
+                   hasBody(hasDescendant(unaryOperator(
+                       anyOf(hasOperatorName("++"), hasOperatorName("--")),
+                       hasUnaryOperand(declRefExpr(
+                           to(varDecl(allOf(equalsBoundNode("initVarName"),
+                                            hasType(isInteger()))))))))),
+                   unless(hasBody(anyOf(changeIntBoundNode("initVarName"),
+                                        callByRef("initVarName"),
+                                        getAddrTo("initVarName")))))
+      .bind("whileLoop");
+}
+
+static internal::Matcher<Stmt> doWhileLoopMatcher() {
+  return doStmt(hasCondition(simpleCondition("initVarName")),
+                hasBody(hasDescendant(unaryOperator(
+                    anyOf(hasOperatorName("++"), hasOperatorName("--")),
+                    hasUnaryOperand(declRefExpr(
+                        to(varDecl(allOf(equalsBoundNode("initVarName"),
+                                         hasType(isInteger()))))))))),
+                unless(hasBody(anyOf(
+                    changeIntBoundNode("initVarName"), callByRef("initVarName"),
+                    getAddrTo("initVarName"))))).bind("whileLoop");
+}
+
+bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
+
+  if (!isLoopStmt(LoopStmt))
+    return false;
+
+  // TODO: In cases of while and do..while statements the value of initVarName
+  // should be checked to be known
+  // TODO: Match the cases where the bound is not a concrete literal but an
+  // integer with known value
+
+  auto Matches = match(whileLoopMatcher(), *LoopStmt, ASTCtx);
+  if (!Matches.empty())
+    return true;
+
+  Matches = match(doWhileLoopMatcher(), *LoopStmt, ASTCtx);
+  if (!Matches.empty())
+    return true;
+
+  Matches = match(forLoopMatcher(), *LoopStmt, ASTCtx);
+  return !Matches.empty();
+}
+
+bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State) {
+  return State->contains<UnrolledLoopBlocks>(Block);
+}
+namespace {
 class LoopVisitor : public ConstStmtVisitor<LoopVisitor> {
 public:
   LoopVisitor(ProgramStateRef St, AnalysisManager &AMgr, CFGStmtMap *M,
@@ -87,112 +184,6 @@ private:
   CFGStmtMap *StmtToBlockMap;
   const Stmt *LoopStmt;
 };
-
-static internal::Matcher<Stmt> simpleCondition(std::string BindName) {
-  return binaryOperator(
-      anyOf(hasOperatorName("<"), hasOperatorName(">"), hasOperatorName("<="),
-            hasOperatorName(">=")),
-      hasEitherOperand(ignoringParenImpCasts(declRefExpr(to(
-          varDecl(allOf(equalsBoundNode(BindName), hasType(isInteger()))))))),
-      hasEitherOperand(integerLiteral()));
-}
-
-static internal::Matcher<Stmt> changeIntBoundNode(std::string NodeName) {
-  return binaryOperator(
-      anyOf(hasOperatorName("="), hasOperatorName("+="), hasOperatorName("/="),
-            hasOperatorName("*="), hasOperatorName("-=")),
-      hasLHS(ignoringParenImpCasts(
-          declRefExpr(to(varDecl(equalsBoundNode(NodeName)))))));
-}
-
-static internal::Matcher<Stmt> callByRef(std::string NodeName) {
-  return hasDescendant(callExpr(forEachArgumentWithParam(
-      declRefExpr(hasDeclaration(equalsBoundNode(NodeName))),
-      parmVarDecl(hasType(references(qualType(unless(isConstQualified()))))))));
-}
-
-static internal::Matcher<Stmt> getAddrTo(std::string NodeName) {
-  return expr(unaryOperator(hasOperatorName("&"),
-                            hasUnaryOperand(declRefExpr(hasDeclaration(
-                                equalsBoundNode("initVarName"))))));
-}
-
-static internal::Matcher<Stmt> forLoopMatcher() {
-  return forStmt(
-             // Initialization should match the form: 'int i = 6' or 'i = 7'.
-             hasLoopInit(anyOf(
-                 declStmt(
-                     hasSingleDecl(varDecl(hasInitializer(integerLiteral()))
-                                       .bind("initVarName"))),
-                 binaryOperator(
-                     hasLHS(declRefExpr(to(varDecl().bind("initVarName")))),
-                     hasRHS(integerLiteral())))),
-             // Incrementation should be a simple increment or decrement
-             // operator call.
-             hasIncrement(unaryOperator(
-                 anyOf(hasOperatorName("++"), hasOperatorName("--")),
-                 hasUnaryOperand(declRefExpr(
-                     to(varDecl(allOf(equalsBoundNode("initVarName"),
-                                      hasType(isInteger())))))))),
-             // Escaping and not known mutation of the loop counter is handled
-             // by exclusion of assigning and address-of operators and
-             // pass-by-ref function calls on the loop counter from the body.
-             hasCondition(simpleCondition("initVarName")),
-             unless(hasBody(anyOf(changeIntBoundNode("initVarName"),
-                                  callByRef("initVarName"),
-                                  getAddrTo("initVarName"))))).bind("forLoop");
-}
-
-static internal::Matcher<Stmt> whileLoopMatcher() {
-  return whileStmt(hasCondition(simpleCondition("initVarName")),
-                   hasBody(hasDescendant(unaryOperator(
-                       anyOf(hasOperatorName("++"), hasOperatorName("--")),
-                       hasUnaryOperand(declRefExpr(
-                           to(varDecl(allOf(equalsBoundNode("initVarName"),
-                                            hasType(isInteger()))))))))),
-                   unless(hasBody(anyOf(changeIntBoundNode("initVarName"),
-                                        callByRef("initVarName"),
-                                        getAddrTo("initVarName")))))
-      .bind("whileLoop");
-}
-
-static internal::Matcher<Stmt> doWhileLoopMatcher() {
-  return doStmt(hasCondition(simpleCondition("initVarName")),
-                hasBody(hasDescendant(unaryOperator(
-                    anyOf(hasOperatorName("++"), hasOperatorName("--")),
-                    hasUnaryOperand(declRefExpr(
-                        to(varDecl(allOf(equalsBoundNode("initVarName"),
-                                         hasType(isInteger()))))))))),
-                unless(hasBody(anyOf(
-                    changeIntBoundNode("initVarName"), callByRef("initVarName"),
-                    getAddrTo("initVarName"))))).bind("whileLoop");
-}
-
-bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
-
-  if (!isLoopStmt(LoopStmt))
-    return false;
-
-  MatchFinder FindLoop;
-  // TODO: In cases of while and do..while statements the value of initVarName
-  // should be checked to be known
-  // TODO: Match the cases where the bound is not a concrete literal but an
-  // integer with known value
-
-  auto Matches = match(whileLoopMatcher(), *LoopStmt, ASTCtx);
-  if (!Matches.empty())
-    return true;
-
-  Matches = match(doWhileLoopMatcher(), *LoopStmt, ASTCtx);
-  if (!Matches.empty())
-    return true;
-
-  Matches = match(forLoopMatcher(), *LoopStmt, ASTCtx);
-  return !Matches.empty();
-}
-
-bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State) {
-  return State->contains<UnrolledLoopBlocks>(Block);
 }
 
 ProgramStateRef markBlocksAsUnrolled(const Stmt *Term, ProgramStateRef State,
