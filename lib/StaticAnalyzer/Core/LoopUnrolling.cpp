@@ -145,15 +145,50 @@ static internal::Matcher<Stmt> whileLoopMatcher() {
                          "initVarName"))))))))))).bind("whileLoop");
 }
 
+static internal::Matcher<Stmt> doWhileLoopMatcher() {
+  return doStmt(
+             hasCondition(binaryOperator(
+                 anyOf(hasOperatorName("<"), hasOperatorName(">"),
+                       hasOperatorName("<="), hasOperatorName(">=")),
+                 hasLHS(ignoringParenImpCasts(declRefExpr(
+                     to(varDecl(hasType(isInteger())).bind("initVarName"))))),
+                 hasRHS(integerLiteral().bind("bound")))),
+             hasBody(hasDescendant(
+                 unaryOperator(hasOperatorName("++"),
+                               hasUnaryOperand(declRefExpr(to(
+                                   varDecl(allOf(equalsBoundNode("initVarName"),
+                                                 hasType(isInteger()))))))))),
+             unless(hasBody(anyOf(
+                 hasDescendant(callExpr(forEachArgumentWithParam(
+                     declRefExpr(
+                         hasDeclaration(equalsBoundNode("initVarName"))),
+                     parmVarDecl(hasType(
+                         references(qualType(unless(isConstQualified())))))))),
+                 hasDescendant(expr(unaryOperator(
+                     hasOperatorName("&"),
+                     hasUnaryOperand(declRefExpr(hasDeclaration(equalsBoundNode(
+                         "initVarName"))))))))))).bind("whileLoop");
+}
+
 bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
 
   if (!isLoopStmt(LoopStmt))
     return false;
 
   MatchFinder FindLoop;
+  // TODO: In cases of while and do..while statements the value of initVarName
+  // should be checked to be known
+  // TODO: Match the cases where the bound is not a concrete literal but an
+  // integer with known value
+
   auto Matches = match(whileLoopMatcher(), *LoopStmt, ASTCtx);
   if (!Matches.empty())
     return true;
+
+  Matches = match(doWhileLoopMatcher(), *LoopStmt, ASTCtx);
+  if (!Matches.empty())
+    return true;
+
   Matches = match(forLoopMatcher(), *LoopStmt, ASTCtx);
   return !Matches.empty();
 }
