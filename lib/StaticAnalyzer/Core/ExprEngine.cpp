@@ -1504,28 +1504,34 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
-  const CFGBlock* ActualBlock = nodeBuilder.getContext().getBlock();
 
-  //Unrolling stuff
-  const Stmt *Term = ActualBlock->getTerminator();
-  if(Term && shouldCompletelyUnroll(Term, AMgr.getASTContext())){
-    ProgramStateRef UnrolledState = markBlocksAsUnrolled(Term, Pred->getState(), AMgr,
-                                              Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap());
-    if(UnrolledState != Pred->getState())
-      nodeBuilder.generateNode(UnrolledState, Pred);
-    return;
+  // If this block is terminated by a loop which has a known bound (and meets
+  // other constraints) then consider completely unrolling it.
+  if (AMgr.options.shouldUnrollLoops()) {
+    const CFGBlock *ActualBlock = nodeBuilder.getContext().getBlock();
+    const Stmt *Term = ActualBlock->getTerminator();
+    if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext())) {
+      ProgramStateRef UnrolledState = markBlocksAsUnrolled(
+              Term, Pred->getState(), AMgr, Pred->getLocationContext()
+                      ->getAnalysisDeclContext()
+                      ->getCFGStmtMap());
+      if (UnrolledState != Pred->getState())
+        nodeBuilder.generateNode(UnrolledState, Pred);
+      return;
+    }
+
+    if (isUnrolledLoopBlock(ActualBlock, Pred->getState()))
+      return;
+    if (ActualBlock->empty())
+      return;
   }
-
-  if(isUnrolledLoopBlock(ActualBlock, Pred->getState()))
-    return;
-  if(ActualBlock->empty())
-    return;
 
   // If this block is terminated by a loop and it has already been visited the
   // maximum number of times, widen the loop
   unsigned int BlockCount = nodeBuilder.getContext().blockCount();
   if (BlockCount == AMgr.options.maxBlockVisitOnPath - 1 &&
       AMgr.options.shouldWidenLoops()) {
+    const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
     if (!(Term &&
           (isa<ForStmt>(Term) || isa<WhileStmt>(Term) || isa<DoStmt>(Term))))
       return;
