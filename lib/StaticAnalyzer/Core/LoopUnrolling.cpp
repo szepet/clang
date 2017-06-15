@@ -51,12 +51,12 @@ static internal::Matcher<Stmt> simpleCondition(std::string BindName) {
                         hasEitherOperand(integerLiteral()));
 }
 
-static internal::Matcher<Stmt> changeIntBoundNode(std::string NodeName) {
-  return binaryOperator(
+static internal::Matcher<Stmt> changeIntBoundNode(const std::string &NodeName) {
+  return hasDescendant(binaryOperator(
       anyOf(hasOperatorName("="), hasOperatorName("+="), hasOperatorName("/="),
             hasOperatorName("*="), hasOperatorName("-=")),
       hasLHS(ignoringParenImpCasts(
-          declRefExpr(to(varDecl(equalsBoundNode(NodeName)))))));
+          declRefExpr(to(varDecl(equalsBoundNode(NodeName))))))));
 }
 
 static internal::Matcher<Stmt> callByRef(std::string NodeName) {
@@ -66,7 +66,7 @@ static internal::Matcher<Stmt> callByRef(std::string NodeName) {
 }
 
 static internal::Matcher<Stmt> getAddrTo(std::string NodeName) {
-  return expr(unaryOperator(
+  return hasDescendant(unaryOperator(
       hasOperatorName("&"),
       hasUnaryOperand(declRefExpr(hasDeclaration(equalsBoundNode(NodeName))))));
 }
@@ -163,10 +163,13 @@ public:
   void VisitStmt(const Stmt *S) {
     if (!S || (isLoopStmt(S) && S != LoopStmt))
       return;
-
     assert(StmtToBlockMap->getBlock(S));
     State = State->add<UnrolledLoopBlocks>(StmtToBlockMap->getBlock(S));
-    if (auto CallExp = dyn_cast<CallExpr>(S)) {
+
+    // In case of function calls mark their CFGBlocks as well.
+    auto CallExp = dyn_cast<CallExpr>(S);
+    if (CallExp && CallExp->getCalleeDecl() &&
+        CallExp->getCalleeDecl()->getBody()) {
       auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
       for (CFG::const_iterator BlockIt = CalleeCFG->begin();
            BlockIt != CalleeCFG->end(); BlockIt++) {
@@ -193,18 +196,10 @@ ProgramStateRef markBlocksAsUnrolled(const Stmt *Term, ProgramStateRef State,
     return State;
 
   State = State->add<UnrolledLoops>(Term);
-  NumTimesLoopUnrolled++;
+  ++NumTimesLoopUnrolled;
   LoopVisitor LV(State, AMgr, StmtToBlockMap, Term);
   LV.Visit(Term);
   return LV.getState();
-}
-
-void stateTesting(ProgramStateRef State, std::string ErrorString) {
-  llvm::errs() << "STATE TEST " << ErrorString << "\n";
-  UnrolledLoopBlocksTy ULB = State->get<UnrolledLoopBlocks>();
-  for (const UnrolledLoopBlocksTy::value_type &E : ULB) {
-    llvm::errs() << E << "  " << ErrorString << "\n";
-  }
 }
 }
 }
