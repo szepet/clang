@@ -1,4 +1,4 @@
-set(LLVM_LINK_COMPONENTS Support)
+set(LLVM_LINK_COMPONENTS support)
 
 # Link Z3 if the user wants to build it.
 if(CLANG_ANALYZER_WITH_Z3)
