@@ -23,12 +23,11 @@
 
 namespace clang {
     namespace ento {
-        void stateTesting(ProgramStateRef State, std::string ErrorString = "");
-        ProgramStateRef markBlocksAsUnrolled(ProgramStateRef State,
+        ProgramStateRef markBlocksAsUnrolled(const Stmt *Term,
+                                             ProgramStateRef State,
                                              AnalysisManager &AMgr,
-                                             CFGStmtMap *StmtToBlockMap,
-                                             const Stmt *Term);
-        bool isUnrolledLoopBlock(ProgramStateRef State, const CFGBlock *Block);
+                                             CFGStmtMap *StmtToBlockMap);
+        bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State);
         bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx);
 
     } // end namespace ento
