@@ -66,7 +66,7 @@ public:
   /// Called by CoreEngine when it already processed a CFGBlock.  The
   /// SubEngine is expected to populate srcNodes with new nodes representing
   /// updated analysis state, or generate no nodes at all if it doesn't.
-  virtual void processCFGBlockExit(const BlockEdge &L,
+  virtual void processCFGBlockExit(const CFGBlock* L,
                                    NodeBuilderWithSinks &nodeBuilder,
                                    ExplodedNode *Pred) = 0;
 

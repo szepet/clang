@@ -295,18 +295,7 @@ bool CoreEngine::ExecuteWorkListWithInitialState(const LocationContext *L,
 
 void CoreEngine::HandleBlockEdge(const BlockEdge &L, ExplodedNode *Pred) {
   // Procedure of the source CFGBlock.
-  const CFGBlock *SrcBlk = L.getSrc();
-  NodeBuilderContext SrcBuilderCtx(*this, SrcBlk, Pred);
-  // Call into the SubEngine to process exiting the source CFGBlock.
-  ExplodedNodeSet srcNodes;
-  BlockExit BEx(SrcBlk, Pred->getLocationContext());
-  NodeBuilderWithSinks srcNodeBuilder(Pred, srcNodes, SrcBuilderCtx, BEx);
-  SubEng.processCFGBlockExit(L, srcNodeBuilder, Pred);
-  if (srcNodeBuilder.hasGeneratedNodes()) {
-    const ExplodedNodeSet &srcNodeSet = srcNodeBuilder.getResults();
-    assert(srcNodeSet.size() == 1);
-    Pred = *srcNodeSet.begin();
-  }
+
 
   // Procedure of the destination CFGBlock.
   const CFGBlock *Blk = L.getDst();
@@ -380,10 +369,22 @@ void CoreEngine::HandleBlockEntrance(const BlockEntrance &L,
 
 void CoreEngine::HandleBlockExit(const CFGBlock * B, ExplodedNode *Pred) {
 
-  const VarDecl* valami;
+  NodeBuilderContext SrcBuilderCtx(*this, B, Pred);
+  // Call into the SubEngine to process exiting the CFGBlock.
+  ExplodedNodeSet srcNodes;
+  BlockExit BEx(B, Pred->getLocationContext());
+  NodeBuilderWithSinks srcNodeBuilder(Pred, srcNodes, SrcBuilderCtx, BEx);
+  SubEng.processCFGBlockExit(B, srcNodeBuilder, Pred);
+  if (srcNodeBuilder.hasGeneratedNodes()) {
+    const ExplodedNodeSet &srcNodeSet = srcNodeBuilder.getResults();
+    assert(srcNodeSet.size() == 1);
+    Pred = *srcNodeSet.begin();
+  }
+
+  /*const VarDecl* valami;
   const Stmt* valami2;
   llvm::APSInt asd;
-  asd = 1;
+  asd = 1;*/
   if (const Stmt *Term = B->getTerminator()) {
     switch (Term->getStmtClass()) {
       default:

@@ -1571,12 +1571,12 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
 }
 
 /// Block exit.
-void ExprEngine::processCFGBlockExit(const BlockEdge &L,
+void ExprEngine::processCFGBlockExit(const CFGBlock* B,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
 
-  const CFGBlock *ActualBlock = nodeBuilder.getContext().getBlock();
-  const Stmt *Term = ActualBlock->getTerminator();
+  //const CFGBlock *ActualBlock = nodeBuilder.getContext().getBlock();
+  const Stmt *Term = B->getTerminator();
   //if(Term) nodeBuilder.getContext().getBlock()->dump();
   if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext(),Pred)) {
     //auto valami = shouldCompletelyUnroll(Term,AMgr.getASTContext());

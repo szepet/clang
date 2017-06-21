@@ -219,7 +219,7 @@ public:
                                ExplodedNode *Pred) override;
 
   /// Called by CoreEngine when processing the exit of a CFGBlock.
-  void processCFGBlockExit(const BlockEdge &L,
+  void processCFGBlockExit(const CFGBlock* B,
                                NodeBuilderWithSinks &nodeBuilder,
                                ExplodedNode *Pred) override;
  
