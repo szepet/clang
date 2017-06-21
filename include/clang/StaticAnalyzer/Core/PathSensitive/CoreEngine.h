@@ -84,7 +84,7 @@ private:
   /// (This data is owned by AnalysisConsumer.)
   FunctionSummariesTy *FunctionSummaries;
 
-  void generateNode(const ProgramPoint &Loc,
+  ExplodedNode* generateNode(const ProgramPoint &Loc,
                     ProgramStateRef State,
                     ExplodedNode *Pred);
 

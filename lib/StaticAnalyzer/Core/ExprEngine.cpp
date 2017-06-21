@@ -1500,6 +1500,7 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
   // If this block is terminated by a loop which has a known bound (and meets
   // other constraints) then consider completely unrolling it.
   //if (!AMgr.options.shouldUnrollLoops()) {
+
   const CFGBlock *ActualBlock = nodeBuilder.getContext().getBlock();
   const Stmt *Term = ActualBlock->getTerminator();
   if(Term) nodeBuilder.getContext().getBlock()->dump();

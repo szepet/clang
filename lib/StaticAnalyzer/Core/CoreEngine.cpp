@@ -294,6 +294,19 @@ bool CoreEngine::ExecuteWorkListWithInitialState(const LocationContext *L,
 }
 
 void CoreEngine::HandleBlockEdge(const BlockEdge &L, ExplodedNode *Pred) {
+  // Call into the SubEngine to process exiting the source CFGBlock.
+  const CFGBlock *SrcBlk = L.getSrc();
+  NodeBuilderContext SrcBuilderCtx(*this, SrcBlk, Pred);
+  // Call into the SubEngine to process entering the CFGBlock.
+  ExplodedNodeSet srcNodes;
+  BlockExit BEx(SrcBlk, Pred->getLocationContext());
+  NodeBuilderWithSinks srcNodeBuilder(Pred, srcNodes, SrcBuilderCtx, BEx);
+  SubEng.processCFGBlockExit(L, srcNodeBuilder, Pred);
+  if (srcNodeBuilder.hasGeneratedNodes()) {
+    const ExplodedNodeSet &srcNodeSet = srcNodeBuilder.getResults();
+    assert(srcNodeSet.size() == 1);
+    Pred = *srcNodeSet.begin();
+  }
 
   const CFGBlock *Blk = L.getDst();
   NodeBuilderContext BuilderCtx(*this, Blk, Pred);
@@ -333,6 +346,7 @@ void CoreEngine::HandleBlockEdge(const BlockEdge &L, ExplodedNode *Pred) {
   BlockEntrance BE(Blk, Pred->getLocationContext());
   NodeBuilderWithSinks nodeBuilder(Pred, dstNodes, BuilderCtx, BE);
   SubEng.processCFGBlockEntrance(L, nodeBuilder, Pred);
+
 
   // Auto-generate a node.
   if (!nodeBuilder.hasGeneratedNodes()) {
@@ -422,28 +436,29 @@ void CoreEngine::HandleBlockExit(const CFGBlock * B, ExplodedNode *Pred) {
         HandleBranch(cast<CXXForRangeStmt>(Term)->getCond(), Term, B, Pred);
         return;
 
-      case Stmt::ForStmtClass:
-        handleLoopUnroll();
+      case Stmt::ForStmtClass: {
+        //handleLoopUnroll();
         //valami = shouldCompletelyUnroll(Term,SubEng.getAnalysisManager().getASTContext());
         valami2 = shouldCompletelyUnroll(Term,
                                          SubEng.getAnalysisManager().getASTContext(),
                                          Pred);
         //llvm::errs() << valami << "\n";
         //if(valami)
-        Pred->getState()->getSVal(valami2, Pred->getLocationContext()).dump();;
+        Pred->getState()->getSVal(valami2, Pred->getLocationContext()).dump();
+        ExplodedNode* newNode = Pred;
         //shouldCompletelyUnroll2(Term, SubEng.getAnalysisManager().getASTContext()).dump();
         if (markBlocksAsUnrolled(Term, Pred->getState(),
                                  SubEng.getAnalysisManager(),
                                  Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap()) !=
             Pred->getState())
-          generateNode(
+           newNode = generateNode(
                   BlockEdge(B, *(B->succ_begin()), Pred->getLocationContext()),
                   markBlocksAsUnrolled(Term, Pred->getState(),
                                        SubEng.getAnalysisManager(),
                                        Pred->getLocationContext()
                                                ->getAnalysisDeclContext()
                                                ->getCFGStmtMap()), Pred);
-        HandleBranch(cast<ForStmt>(Term)->getCond(), Term, B, Pred);
+        HandleBranch(cast<ForStmt>(Term)->getCond(), Term, B, newNode);
 
         //SubEng.getStateManager().getConstraintManager().getSymVal();
         //SubEng.getStateManager().getConstraintManager().
@@ -454,7 +469,7 @@ void CoreEngine::HandleBlockExit(const CFGBlock * B, ExplodedNode *Pred) {
                                                                SubEng.getStateManager().getSValBuilder().makeIntVal(asd),
                                                                shouldCompletelyUnroll2(Term, SubEng.getAnalysisManager().getASTContext())).dump();*/
         return;
-
+      }
 
       case Stmt::ContinueStmtClass:
       case Stmt::BreakStmtClass:
@@ -568,7 +583,7 @@ void CoreEngine::HandlePostStmt(const CFGBlock *B, unsigned StmtIdx,
 
 /// generateNode - Utility method to generate nodes, hook up successors,
 ///  and add nodes to the worklist.
-void CoreEngine::generateNode(const ProgramPoint &Loc,
+ExplodedNode* CoreEngine::generateNode(const ProgramPoint &Loc,
                               ProgramStateRef State,
                               ExplodedNode *Pred) {
 
@@ -584,6 +599,7 @@ void CoreEngine::generateNode(const ProgramPoint &Loc,
 
   // Only add 'Node' to the worklist if it was freshly generated.
   if (IsNew) WList->enqueue(Node);
+  return Node;
 }
 
 void CoreEngine::enqueueStmtNode(ExplodedNode *N,
