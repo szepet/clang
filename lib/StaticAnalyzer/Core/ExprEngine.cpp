@@ -15,14 +15,10 @@
 
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
 #include "PrettyStackTraceLocationContext.h"
-#include "clang/ASTMatchers/ASTMatchers.h"
-#include "clang/ASTMatchers/ASTMatchFinder.h"
-#include "clang/AST/StmtVisitor.h"
+#include "clang/Analysis/CFGStmtMap.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/ParentMap.h"
-#include "clang/Analysis/CFGStmtMap.h"
 #include "clang/AST/StmtCXX.h"
-#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/PrettyStackTrace.h"
@@ -31,8 +27,8 @@
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/AnalysisManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/LoopWidening.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/LoopUnrolling.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/LoopWidening.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/raw_ostream.h"
@@ -1496,38 +1492,37 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
   return true;
 }
 
-/*extern llvm::ImmutableMap<const Stmt *, llvm::ImmutableSet<const CFGBlock *>>
-        UnrolledLoopBlocks;*/
-
 /// Block entrance.  (Update counters).
 void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
-
   // If this block is terminated by a loop which has a known bound (and meets
   // other constraints) then consider completely unrolling it.
-  if (AMgr.options.shouldUnrollLoops()) {
-    const CFGBlock *ActualBlock = nodeBuilder.getContext().getBlock();
-    const Stmt *Term = ActualBlock->getTerminator();
-    if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext())) {
-      ProgramStateRef UnrolledState = markBlocksAsUnrolled(
-              Term, Pred->getState(), AMgr, Pred->getLocationContext()
-                      ->getAnalysisDeclContext()
-                      ->getCFGStmtMap());
-      if (UnrolledState != Pred->getState())
-        nodeBuilder.generateNode(UnrolledState, Pred);
-      return;
-    }
-
-    if (isUnrolledLoopBlock(ActualBlock, Pred->getState()))
-      return;
-    if (ActualBlock->empty())
-      return;
+  //if (!AMgr.options.shouldUnrollLoops()) {
+  const CFGBlock *ActualBlock = nodeBuilder.getContext().getBlock();
+  const Stmt *Term = ActualBlock->getTerminator();
+  if(Term) nodeBuilder.getContext().getBlock()->dump();
+  if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext(),Pred)) {
+    //auto valami = shouldCompletelyUnroll(Term,AMgr.getASTContext());
+    //Pred->getState()->getLValue(valami,Pred->getLocationContext());
+    ProgramStateRef UnrolledState = markBlocksAsUnrolled(
+            Term, Pred->getState(), AMgr, Pred->getLocationContext()
+                    ->getAnalysisDeclContext()
+                    ->getCFGStmtMap());
+   // if (UnrolledState != Pred->getState())
+   //   nodeBuilder.generateNode(UnrolledState, Pred);
+    return;
   }
 
+  if (isUnrolledLoopBlock(ActualBlock, Pred->getState()))
+    return;
+  if (ActualBlock->empty())
+    return;
+  //}
+
   // If this block is terminated by a loop and it has already been visited the
-  // maximum number of times, widen the loop
+  // maximum number of times, widen the loop.
   unsigned int BlockCount = nodeBuilder.getContext().blockCount();
   if (BlockCount == AMgr.options.maxBlockVisitOnPath - 1 &&
       AMgr.options.shouldWidenLoops()) {
@@ -1548,6 +1543,7 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     static SimpleProgramPointTag tag(TagProviderName, "Block count exceeded");
     const ExplodedNode *Sink =
                    nodeBuilder.generateSink(Pred->getState(), Pred, &tag);
+
     // Check if we stopped at the top level function or not.
     // Root node should have the location context of the top most function.
     const LocationContext *CalleeLC = Pred->getLocation().getLocationContext();

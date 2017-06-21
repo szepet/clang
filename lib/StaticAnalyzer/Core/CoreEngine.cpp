@@ -18,6 +18,7 @@
 #include "clang/AST/StmtCXX.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/AnalysisManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/LoopUnrolling.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/Casting.h"
 
@@ -364,6 +365,10 @@ void CoreEngine::HandleBlockEntrance(const BlockEntrance &L,
 
 void CoreEngine::HandleBlockExit(const CFGBlock * B, ExplodedNode *Pred) {
 
+  const VarDecl* valami;
+  const Stmt* valami2;
+  llvm::APSInt asd;
+  asd = 1;
   if (const Stmt *Term = B->getTerminator()) {
     switch (Term->getStmtClass()) {
       default:
@@ -418,8 +423,38 @@ void CoreEngine::HandleBlockExit(const CFGBlock * B, ExplodedNode *Pred) {
         return;
 
       case Stmt::ForStmtClass:
+        handleLoopUnroll();
+        //valami = shouldCompletelyUnroll(Term,SubEng.getAnalysisManager().getASTContext());
+        valami2 = shouldCompletelyUnroll(Term,
+                                         SubEng.getAnalysisManager().getASTContext(),
+                                         Pred);
+        //llvm::errs() << valami << "\n";
+        //if(valami)
+        Pred->getState()->getSVal(valami2, Pred->getLocationContext()).dump();;
+        //shouldCompletelyUnroll2(Term, SubEng.getAnalysisManager().getASTContext()).dump();
+        if (markBlocksAsUnrolled(Term, Pred->getState(),
+                                 SubEng.getAnalysisManager(),
+                                 Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap()) !=
+            Pred->getState())
+          generateNode(
+                  BlockEdge(B, *(B->succ_begin()), Pred->getLocationContext()),
+                  markBlocksAsUnrolled(Term, Pred->getState(),
+                                       SubEng.getAnalysisManager(),
+                                       Pred->getLocationContext()
+                                               ->getAnalysisDeclContext()
+                                               ->getCFGStmtMap()), Pred);
         HandleBranch(cast<ForStmt>(Term)->getCond(), Term, B, Pred);
+
+        //SubEng.getStateManager().getConstraintManager().getSymVal();
+        //SubEng.getStateManager().getConstraintManager().
+
+        /* SubEng.getStateManager().getSValBuilder().evalBinOpLN(Pred->getState(),
+                                                               BO_Add,
+                                                               Pred->getState()->getLValue(valami, Pred->getLocationContext()),
+                                                               SubEng.getStateManager().getSValBuilder().makeIntVal(asd),
+                                                               shouldCompletelyUnroll2(Term, SubEng.getAnalysisManager().getASTContext())).dump();*/
         return;
+
 
       case Stmt::ContinueStmtClass:
       case Stmt::BreakStmtClass:

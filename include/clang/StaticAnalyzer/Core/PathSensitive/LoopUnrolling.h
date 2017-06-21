@@ -29,7 +29,8 @@ ProgramStateRef markBlocksAsUnrolled(const Stmt *Term, ProgramStateRef State,
                                      AnalysisManager &AMgr,
                                      CFGStmtMap *StmtToBlockMap);
 bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State);
-bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx);
+const Stmt* shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx, ExplodedNode* Pred=nullptr);
+ //   QualType shouldCompletelyUnroll2(const Stmt *LoopStmt, ASTContext &ASTCtx);
 
 } // end namespace ento
 } // end namespace clang

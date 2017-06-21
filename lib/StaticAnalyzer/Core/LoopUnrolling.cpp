@@ -38,20 +38,18 @@ namespace clang {
 namespace ento {
 
 static bool isLoopStmt(const Stmt *S) {
-  // if(!S)
-  //  return false;
   return S && (isa<ForStmt>(S) || isa<WhileStmt>(S) || isa<DoStmt>(S));
 }
 
-static internal::Matcher<Stmt> simpleCondition(std::string BindName) {
+static internal::Matcher<Stmt> simpleCondition(StringRef BindName) {
   return binaryOperator(anyOf(hasOperatorName("<"), hasOperatorName(">"),
                               hasOperatorName("<="), hasOperatorName(">=")),
                         hasEitherOperand(ignoringParenImpCasts(declRefExpr(
                             to(varDecl(hasType(isInteger())).bind(BindName))))),
-                        hasEitherOperand(integerLiteral()));
+                        hasRHS(stmt().bind("DUDE2")));
 }
 
-static internal::Matcher<Stmt> changeIntBoundNode(const std::string &NodeName) {
+static internal::Matcher<Stmt> changeIntBoundNode(StringRef NodeName) {
   return hasDescendant(binaryOperator(
       anyOf(hasOperatorName("="), hasOperatorName("+="), hasOperatorName("/="),
             hasOperatorName("*="), hasOperatorName("-=")),
@@ -59,13 +57,13 @@ static internal::Matcher<Stmt> changeIntBoundNode(const std::string &NodeName) {
           declRefExpr(to(varDecl(equalsBoundNode(NodeName))))))));
 }
 
-static internal::Matcher<Stmt> callByRef(std::string NodeName) {
+static internal::Matcher<Stmt> callByRef(StringRef NodeName) {
   return hasDescendant(callExpr(forEachArgumentWithParam(
       declRefExpr(hasDeclaration(equalsBoundNode(NodeName))),
       parmVarDecl(hasType(references(qualType(unless(isConstQualified()))))))));
 }
 
-static internal::Matcher<Stmt> getAddrTo(std::string NodeName) {
+static internal::Matcher<Stmt> getAddrTo(StringRef NodeName) {
   return hasDescendant(unaryOperator(
       hasOperatorName("&"),
       hasUnaryOperand(declRefExpr(hasDeclaration(equalsBoundNode(NodeName))))));
@@ -122,7 +120,7 @@ static internal::Matcher<Stmt> doWhileLoopMatcher() {
                     getAddrTo("initVarName"))))).bind("whileLoop");
 }
 
-bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
+const Stmt* shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx, ExplodedNode* Pred) {
 
   if (!isLoopStmt(LoopStmt))
     return false;
@@ -134,19 +132,57 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
 
   auto Matches = match(whileLoopMatcher(), *LoopStmt, ASTCtx);
   if (!Matches.empty())
-    return true;
+    //return true;
+    return nullptr;
 
   Matches = match(doWhileLoopMatcher(), *LoopStmt, ASTCtx);
   if (!Matches.empty())
-    return true;
+    //return true;
+    return nullptr;
 
   Matches = match(forLoopMatcher(), *LoopStmt, ASTCtx);
-  return !Matches.empty();
+  if(!Matches.empty()) {
+    const Stmt* asd =  Matches[0].getNodeAs<Stmt>("DUDE2");
+    Pred->getState()->getSVal(asd,Pred->getLocationContext()).dump();
+    return asd;
+  }
+  return nullptr;
+  //return !Matches.empty();
 }
+
+QualType shouldCompletelyUnroll2(const Stmt *LoopStmt, ASTContext &ASTCtx) {
+
+  if (!isLoopStmt(LoopStmt))
+    return QualType();
+
+  // TODO: In cases of while and do..while statements the value of initVarName
+  // should be checked to be known
+  // TODO: Match the cases where the bound is not a concrete literal but an
+  // integer with known value
+
+  auto Matches = match(whileLoopMatcher(), *LoopStmt, ASTCtx);
+  if (!Matches.empty())
+    //return true;
+    return QualType();
+
+  Matches = match(doWhileLoopMatcher(), *LoopStmt, ASTCtx);
+  if (!Matches.empty())
+    //return true;
+    return QualType();
+
+  Matches = match(forLoopMatcher(), *LoopStmt, ASTCtx);
+  if(!Matches.empty()) {
+    return Matches[0].getNodeAs<VarDecl>("initVarName")->getType();
+  }
+  return QualType();
+  //return !Matches.empty();
+}
+
 
 bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State) {
   return State->contains<UnrolledLoopBlocks>(Block);
 }
+
 namespace {
 class LoopVisitor : public ConstStmtVisitor<LoopVisitor> {
 public:
@@ -201,5 +237,6 @@ ProgramStateRef markBlocksAsUnrolled(const Stmt *Term, ProgramStateRef State,
   LV.Visit(Term);
   return LV.getState();
 }
+
 }
 }
