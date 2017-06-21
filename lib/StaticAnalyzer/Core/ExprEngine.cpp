@@ -1502,7 +1502,7 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
   //if (!AMgr.options.shouldUnrollLoops()) {
 
   const CFGBlock *ActualBlock = nodeBuilder.getContext().getBlock();
-  const Stmt *Term = ActualBlock->getTerminator();
+/*  const Stmt *Term = ActualBlock->getTerminator();
   if(Term) nodeBuilder.getContext().getBlock()->dump();
   if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext(),Pred)) {
     //auto valami = shouldCompletelyUnroll(Term,AMgr.getASTContext());
@@ -1514,7 +1514,7 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
    // if (UnrolledState != Pred->getState())
    //   nodeBuilder.generateNode(UnrolledState, Pred);
     return;
-  }
+  }*/
 
   if (isUnrolledLoopBlock(ActualBlock, Pred->getState()))
     return;
@@ -1568,6 +1568,28 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     // Make sink nodes as exhausted(for stats) only if retry failed.
     Engine.blocksExhausted.push_back(std::make_pair(L, Sink));
   }
+}
+
+/// Block exit.
+void ExprEngine::processCFGBlockExit(const BlockEdge &L,
+                                         NodeBuilderWithSinks &nodeBuilder,
+                                         ExplodedNode *Pred) {
+
+  const CFGBlock *ActualBlock = nodeBuilder.getContext().getBlock();
+  const Stmt *Term = ActualBlock->getTerminator();
+  //if(Term) nodeBuilder.getContext().getBlock()->dump();
+  if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext(),Pred)) {
+    //auto valami = shouldCompletelyUnroll(Term,AMgr.getASTContext());
+    //Pred->getState()->getLValue(valami,Pred->getLocationContext());
+    ProgramStateRef UnrolledState = markBlocksAsUnrolled(
+            Term, Pred->getState(), AMgr, Pred->getLocationContext()
+                    ->getAnalysisDeclContext()
+                    ->getCFGStmtMap());
+     if (UnrolledState != Pred->getState())
+       nodeBuilder.generateNode(UnrolledState, Pred);
+    return;
+  }
+
 }
 
 //===----------------------------------------------------------------------===//
@@ -2663,7 +2685,8 @@ struct DOTGraphTraits<ExplodedNode*> :
       }
 
       case ProgramPoint::BlockExitKind:
-        assert (false);
+        Out << "Block Exit: B"
+            << Loc.castAs<BlockExit>().getBlock()->getBlockID();
         break;
 
       case ProgramPoint::CallEnterKind:

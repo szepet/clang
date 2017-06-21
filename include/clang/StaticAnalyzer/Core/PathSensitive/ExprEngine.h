@@ -217,6 +217,11 @@ public:
   void processCFGBlockEntrance(const BlockEdge &L,
                                NodeBuilderWithSinks &nodeBuilder,
                                ExplodedNode *Pred) override;
+
+  /// Called by CoreEngine when processing the exit of a CFGBlock.
+  void processCFGBlockExit(const BlockEdge &L,
+                               NodeBuilderWithSinks &nodeBuilder,
+                               ExplodedNode *Pred) override;
  
   /// ProcessBranch - Called by CoreEngine.  Used to generate successor
   ///  nodes by processing the 'effects' of a branch condition.

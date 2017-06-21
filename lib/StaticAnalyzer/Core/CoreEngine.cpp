@@ -294,10 +294,10 @@ bool CoreEngine::ExecuteWorkListWithInitialState(const LocationContext *L,
 }
 
 void CoreEngine::HandleBlockEdge(const BlockEdge &L, ExplodedNode *Pred) {
-  // Call into the SubEngine to process exiting the source CFGBlock.
+  // Procedure of the source CFGBlock.
   const CFGBlock *SrcBlk = L.getSrc();
   NodeBuilderContext SrcBuilderCtx(*this, SrcBlk, Pred);
-  // Call into the SubEngine to process entering the CFGBlock.
+  // Call into the SubEngine to process exiting the source CFGBlock.
   ExplodedNodeSet srcNodes;
   BlockExit BEx(SrcBlk, Pred->getLocationContext());
   NodeBuilderWithSinks srcNodeBuilder(Pred, srcNodes, SrcBuilderCtx, BEx);
@@ -308,6 +308,7 @@ void CoreEngine::HandleBlockEdge(const BlockEdge &L, ExplodedNode *Pred) {
     Pred = *srcNodeSet.begin();
   }
 
+  // Procedure of the destination CFGBlock.
   const CFGBlock *Blk = L.getDst();
   NodeBuilderContext BuilderCtx(*this, Blk, Pred);
 
@@ -439,15 +440,15 @@ void CoreEngine::HandleBlockExit(const CFGBlock * B, ExplodedNode *Pred) {
       case Stmt::ForStmtClass: {
         //handleLoopUnroll();
         //valami = shouldCompletelyUnroll(Term,SubEng.getAnalysisManager().getASTContext());
-        valami2 = shouldCompletelyUnroll(Term,
+        /*valami2 = shouldCompletelyUnroll(Term,
                                          SubEng.getAnalysisManager().getASTContext(),
-                                         Pred);
+                                         Pred);*/
         //llvm::errs() << valami << "\n";
         //if(valami)
-        Pred->getState()->getSVal(valami2, Pred->getLocationContext()).dump();
-        ExplodedNode* newNode = Pred;
+        //Pred->getState()->getSVal(valami2, Pred->getLocationContext()).dump();
+        //ExplodedNode* newNode = Pred;
         //shouldCompletelyUnroll2(Term, SubEng.getAnalysisManager().getASTContext()).dump();
-        if (markBlocksAsUnrolled(Term, Pred->getState(),
+        /*if (markBlocksAsUnrolled(Term, Pred->getState(),
                                  SubEng.getAnalysisManager(),
                                  Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap()) !=
             Pred->getState())
@@ -457,8 +458,8 @@ void CoreEngine::HandleBlockExit(const CFGBlock * B, ExplodedNode *Pred) {
                                        SubEng.getAnalysisManager(),
                                        Pred->getLocationContext()
                                                ->getAnalysisDeclContext()
-                                               ->getCFGStmtMap()), Pred);
-        HandleBranch(cast<ForStmt>(Term)->getCond(), Term, B, newNode);
+                                               ->getCFGStmtMap()), Pred);*/
+        HandleBranch(cast<ForStmt>(Term)->getCond(), Term, B, Pred);
 
         //SubEng.getStateManager().getConstraintManager().getSymVal();
         //SubEng.getStateManager().getConstraintManager().
