@@ -44,11 +44,12 @@ static bool isLoopStmt(const Stmt *S) {
 }
 
 static internal::Matcher<Stmt> simpleCondition(std::string BindName) {
-  return binaryOperator(anyOf(hasOperatorName("<"), hasOperatorName(">"),
-                              hasOperatorName("<="), hasOperatorName(">=")),
-                        hasEitherOperand(ignoringParenImpCasts(declRefExpr(
-                            to(varDecl(hasType(isInteger())).bind(BindName))))),
-                        hasEitherOperand(integerLiteral()));
+  return binaryOperator(
+      anyOf(hasOperatorName("<"), hasOperatorName(">"), hasOperatorName("<="),
+            hasOperatorName(">="), hasOperatorName("!=")),
+      hasEitherOperand(ignoringParenImpCasts(
+          declRefExpr(to(varDecl(hasType(isInteger())).bind(BindName))))),
+      hasEitherOperand(ignoringParenImpCasts(integerLiteral())));
 }
 
 static internal::Matcher<Stmt> changeIntBoundNode(const std::string &NodeName) {
@@ -122,6 +123,10 @@ static internal::Matcher<Stmt> doWhileLoopMatcher() {
                     getAddrTo("initVarName"))))).bind("whileLoop");
 }
 
+static internal::Matcher<Stmt> loopMatcher() {
+  return anyOf(doWhileLoopMatcher(), whileLoopMatcher(), forLoopMatcher());
+}
+
 bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
 
   if (!isLoopStmt(LoopStmt))
@@ -132,27 +137,15 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
   // TODO: Match the cases where the bound is not a concrete literal but an
   // integer with known value
 
-  auto Matches = match(whileLoopMatcher(), *LoopStmt, ASTCtx);
-  if (!Matches.empty())
-    return true;
-
-  Matches = match(doWhileLoopMatcher(), *LoopStmt, ASTCtx);
-  if (!Matches.empty())
-    return true;
-
-  Matches = match(forLoopMatcher(), *LoopStmt, ASTCtx);
+  auto Matches = match(loopMatcher(), *LoopStmt, ASTCtx);
   return !Matches.empty();
 }
 
-bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State) {
-  return State->contains<UnrolledLoopBlocks>(Block);
-}
 namespace {
 class LoopVisitor : public ConstStmtVisitor<LoopVisitor> {
 public:
-  LoopVisitor(ProgramStateRef St, AnalysisManager &AMgr, CFGStmtMap *M,
-              const Stmt *Term)
-      : State(St), AMgr(AMgr), StmtToBlockMap(M), LoopStmt(Term) {}
+  LoopVisitor(ProgramStateRef St, AnalysisManager &AMgr, CFGStmtMap *M)
+      : State(St), AMgr(AMgr), StmtToBlockMap(M), Found(false) {}
 
   void VisitChildren(const Stmt *S) {
     for (const Stmt *Child : S->children())
@@ -161,45 +154,65 @@ public:
   }
 
   void VisitStmt(const Stmt *S) {
-    if (!S || (isLoopStmt(S) && S != LoopStmt))
+    if (!S || (isLoopStmt(S) && S != LoopStmt) || Found)
       return;
     assert(StmtToBlockMap->getBlock(S));
-    State = State->add<UnrolledLoopBlocks>(StmtToBlockMap->getBlock(S));
+    if(StmtToBlockMap->getBlock(S) == SearchedBlock){
+      Found = true;
+      return;
+    }
 
-    // In case of function calls mark their CFGBlocks as well.
+    // In case of function calls investigate their CFGBlocks as well.
     auto CallExp = dyn_cast<CallExpr>(S);
     if (CallExp && CallExp->getCalleeDecl() &&
         CallExp->getCalleeDecl()->getBody()) {
       auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
-      for (CFG::const_iterator BlockIt = CalleeCFG->begin();
-           BlockIt != CalleeCFG->end(); BlockIt++) {
-        State = State->add<UnrolledLoopBlocks>(*BlockIt);
+      for (auto &Block : *CalleeCFG) {
+        if(Block == SearchedBlock){
+          Found = true;
+          return;
+        }
       }
     }
     VisitChildren(S);
   }
 
-  ProgramStateRef getState() { return State; }
+  bool isBlockOfLoop(const CFGBlock* B, const Stmt* Loop){
+    LoopStmt = Loop;
+    SearchedBlock = B;
+    Visit(LoopStmt);
+    return Found;
+  }
 
 private:
   ProgramStateRef State;
   AnalysisManager &AMgr;
   CFGStmtMap *StmtToBlockMap;
   const Stmt *LoopStmt;
+  bool Found;
+  const CFGBlock* SearchedBlock;
 };
 }
 
-ProgramStateRef markBlocksAsUnrolled(const Stmt *Term, ProgramStateRef State,
-                                     AnalysisManager &AMgr,
-                                     CFGStmtMap *StmtToBlockMap) {
+bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State, AnalysisManager &AMgr,
+    CFGStmtMap *StmtToBlockMap) {
+
+  for (auto Term : State->get<UnrolledLoops>()) {
+    LoopVisitor LV(State, AMgr, StmtToBlockMap);
+    if(LV.isBlockOfLoop(Block,Term))
+      return true;
+  }
+  return false;
+
+}
+
+ProgramStateRef markLoopAsUnrolled(const Stmt *Term, ProgramStateRef State) {
   if (State->contains<UnrolledLoops>(Term))
     return State;
 
   State = State->add<UnrolledLoops>(Term);
   ++NumTimesLoopUnrolled;
-  LoopVisitor LV(State, AMgr, StmtToBlockMap, Term);
-  LV.Visit(Term);
-  return LV.getState();
+  return State;
 }
 }
 }

@@ -1511,16 +1511,17 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     const CFGBlock *ActualBlock = nodeBuilder.getContext().getBlock();
     const Stmt *Term = ActualBlock->getTerminator();
     if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext())) {
-      ProgramStateRef UnrolledState = markBlocksAsUnrolled(
-              Term, Pred->getState(), AMgr, Pred->getLocationContext()
-                      ->getAnalysisDeclContext()
-                      ->getCFGStmtMap());
+      ProgramStateRef UnrolledState =
+              markLoopAsUnrolled(Term, Pred->getState());
       if (UnrolledState != Pred->getState())
         nodeBuilder.generateNode(UnrolledState, Pred);
       return;
     }
 
-    if (isUnrolledLoopBlock(ActualBlock, Pred->getState()))
+    if (isUnrolledLoopBlock(ActualBlock, Pred->getState(), AMgr,
+                            Pred->getLocationContext()
+                                    ->getAnalysisDeclContext()
+                                    ->getCFGStmtMap()))
       return;
     if (ActualBlock->empty())
       return;
