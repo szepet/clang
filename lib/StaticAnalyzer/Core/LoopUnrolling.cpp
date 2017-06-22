@@ -41,7 +41,7 @@ static bool isLoopStmt(const Stmt *S) {
   return S && (isa<ForStmt>(S) || isa<WhileStmt>(S) || isa<DoStmt>(S));
 }
 
-static internal::Matcher<Stmt> simpleCondition(std::string BindName) {
+static internal::Matcher<Stmt> simpleCondition(StringRef BindName) {
   return binaryOperator(
       anyOf(hasOperatorName("<"), hasOperatorName(">"), hasOperatorName("<="),
             hasOperatorName(">="), hasOperatorName("!=")),
@@ -50,7 +50,7 @@ static internal::Matcher<Stmt> simpleCondition(std::string BindName) {
       hasEitherOperand(ignoringParenImpCasts(integerLiteral())));
 }
 
-static internal::Matcher<Stmt> changeIntBoundNode(const std::string &NodeName) {
+static internal::Matcher<Stmt> changeIntBoundNode(StringRef NodeName) {
   return hasDescendant(binaryOperator(
       anyOf(hasOperatorName("="), hasOperatorName("+="), hasOperatorName("/="),
             hasOperatorName("*="), hasOperatorName("-=")),
@@ -58,13 +58,13 @@ static internal::Matcher<Stmt> changeIntBoundNode(const std::string &NodeName) {
           declRefExpr(to(varDecl(equalsBoundNode(NodeName))))))));
 }
 
-static internal::Matcher<Stmt> callByRef(std::string NodeName) {
+static internal::Matcher<Stmt> callByRef(StringRef NodeName) {
   return hasDescendant(callExpr(forEachArgumentWithParam(
       declRefExpr(hasDeclaration(equalsBoundNode(NodeName))),
       parmVarDecl(hasType(references(qualType(unless(isConstQualified()))))))));
 }
 
-static internal::Matcher<Stmt> getAddrTo(std::string NodeName) {
+static internal::Matcher<Stmt> getAddrTo(StringRef NodeName) {
   return hasDescendant(unaryOperator(
       hasOperatorName("&"),
       hasUnaryOperand(declRefExpr(hasDeclaration(equalsBoundNode(NodeName))))));
@@ -155,7 +155,7 @@ public:
     if (!S || (isLoopStmt(S) && S != LoopStmt) || Found)
       return;
     assert(StmtToBlockMap->getBlock(S));
-    if(StmtToBlockMap->getBlock(S) == SearchedBlock){
+    if (StmtToBlockMap->getBlock(S) == SearchedBlock) {
       Found = true;
       return;
     }
@@ -166,7 +166,7 @@ public:
         CallExp->getCalleeDecl()->getBody()) {
       auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
       for (auto &Block : *CalleeCFG) {
-        if(Block == SearchedBlock){
+        if (Block == SearchedBlock) {
           Found = true;
           return;
         }
@@ -175,7 +175,7 @@ public:
     VisitChildren(S);
   }
 
-  bool isBlockOfLoop(const CFGBlock* B, const Stmt* Loop){
+  bool isBlockOfLoop(const CFGBlock *B, const Stmt *Loop) {
     LoopStmt = Loop;
     SearchedBlock = B;
     Visit(LoopStmt);
@@ -188,20 +188,19 @@ private:
   CFGStmtMap *StmtToBlockMap;
   const Stmt *LoopStmt;
   bool Found;
-  const CFGBlock* SearchedBlock;
+  const CFGBlock *SearchedBlock;
 };
 }
 
-bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State, AnalysisManager &AMgr,
-    CFGStmtMap *StmtToBlockMap) {
+bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State,
+                         AnalysisManager &AMgr, CFGStmtMap *StmtToBlockMap) {
 
   for (auto Term : State->get<UnrolledLoops>()) {
     LoopVisitor LV(State, AMgr, StmtToBlockMap);
-    if(LV.isBlockOfLoop(Block,Term))
+    if (LV.isBlockOfLoop(Block, Term))
       return true;
   }
   return false;
-
 }
 
 ProgramStateRef markLoopAsUnrolled(const Stmt *Term, ProgramStateRef State) {
