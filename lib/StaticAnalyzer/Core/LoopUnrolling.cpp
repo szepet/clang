@@ -44,9 +44,9 @@ static bool isLoopStmt(const Stmt *S) {
 static internal::Matcher<Stmt> simpleCondition(StringRef BindName) {
   return binaryOperator(anyOf(hasOperatorName("<"), hasOperatorName(">"),
                               hasOperatorName("<="), hasOperatorName(">=")),
-                        hasEitherOperand(ignoringParenImpCasts(declRefExpr(
-                            to(varDecl(hasType(isInteger())).bind(BindName))))),
-                        hasRHS(stmt().bind("DUDE2")));
+                        hasEitherOperand(expr(ignoringParenImpCasts(declRefExpr(
+                            to(varDecl(hasType(isInteger())).bind(BindName))))).bind("counterRef")),
+                        hasEitherOperand(expr(unless(equalsBoundNode("counterRef"))).bind("DUDE2")));
 }
 
 static internal::Matcher<Stmt> changeIntBoundNode(StringRef NodeName) {
@@ -120,24 +120,27 @@ static internal::Matcher<Stmt> doWhileLoopMatcher() {
                     getAddrTo("initVarName"))))).bind("whileLoop");
 }
 
+static internal::Matcher<Stmt> collectBoundVars(StringRef VarName) {
+  return declRefExpr(to(varDecl().bind(VarName)));
+}
+
 const Stmt* shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx, ExplodedNode* Pred) {
 
   if (!isLoopStmt(LoopStmt))
-    return false;
+    return nullptr;
 
   // TODO: In cases of while and do..while statements the value of initVarName
   // should be checked to be known
   // TODO: Match the cases where the bound is not a concrete literal but an
   // integer with known value
 
+
   auto Matches = match(whileLoopMatcher(), *LoopStmt, ASTCtx);
   if (!Matches.empty())
-    //return true;
     return nullptr;
 
   Matches = match(doWhileLoopMatcher(), *LoopStmt, ASTCtx);
   if (!Matches.empty())
-    //return true;
     return nullptr;
 
   Matches = match(forLoopMatcher(), *LoopStmt, ASTCtx);
@@ -147,7 +150,6 @@ const Stmt* shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx, Exp
     return asd;
   }
   return nullptr;
-  //return !Matches.empty();
 }
 
 QualType shouldCompletelyUnroll2(const Stmt *LoopStmt, ASTContext &ASTCtx) {
