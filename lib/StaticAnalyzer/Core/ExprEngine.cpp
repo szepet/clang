@@ -1506,15 +1506,6 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
   // other constraints) then consider completely unrolling it.
   if (AMgr.options.shouldUnrollLoops()) {
     const CFGBlock *ActualBlock = nodeBuilder.getContext().getBlock();
-    const Stmt *Term = ActualBlock->getTerminator();
-    if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext())) {
-      ProgramStateRef UnrolledState =
-              markLoopAsUnrolled(Term, Pred->getState());
-      if (UnrolledState != Pred->getState())
-        nodeBuilder.generateNode(UnrolledState, Pred);
-      return;
-    }
-
     if (isUnrolledLoopBlock(ActualBlock, Pred->getState(), AMgr,
                             Pred->getLocationContext()
                                     ->getAnalysisDeclContext()
@@ -1570,6 +1561,22 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     // Make sink nodes as exhausted(for stats) only if retry failed.
     Engine.blocksExhausted.push_back(std::make_pair(L, Sink));
   }
+}
+
+void ExprEngine::processCFGBlockExit(const CFGBlock* B,
+                         NodeBuilderWithSinks &nodeBuilder,
+                         ExplodedNode *Pred){
+
+  const Stmt *Term = B->getTerminator();
+  if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext(),
+                                     Pred, getSValBuilder())) {
+    ProgramStateRef UnrolledState =
+            markLoopAsUnrolled(Term, Pred->getState());
+    if (UnrolledState != Pred->getState())
+      nodeBuilder.generateNode(UnrolledState, Pred);
+    return;
+  }
+
 }
 
 //===----------------------------------------------------------------------===//

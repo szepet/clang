@@ -364,6 +364,18 @@ void CoreEngine::HandleBlockEntrance(const BlockEntrance &L,
 
 void CoreEngine::HandleBlockExit(const CFGBlock * B, ExplodedNode *Pred) {
 
+  NodeBuilderContext BuilderCtx(*this, B, Pred);
+  // Call into the SubEngine to process exiting the CFGBlock.
+  ExplodedNodeSet srcNodes;
+  BlockExit BE(B, Pred->getLocationContext());
+  NodeBuilderWithSinks srcNodeBuilder(Pred, srcNodes, BuilderCtx, BE);
+  SubEng.processCFGBlockExit(B, srcNodeBuilder, Pred);
+  if (srcNodeBuilder.hasGeneratedNodes()) {
+    const ExplodedNodeSet &srcNodeSet = srcNodeBuilder.getResults();
+    assert(srcNodeSet.size() == 1);
+    Pred = *srcNodeSet.begin();
+  }
+
   if (const Stmt *Term = B->getTerminator()) {
     switch (Term->getStmtClass()) {
       default:

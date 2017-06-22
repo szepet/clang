@@ -41,16 +41,18 @@ static bool isLoopStmt(const Stmt *S) {
   return S && (isa<ForStmt>(S) || isa<WhileStmt>(S) || isa<DoStmt>(S));
 }
 
-static internal::Matcher<Stmt> simpleCondition(std::string BindName) {
+static internal::Matcher<Stmt> simpleCondition(StringRef BindName) {
   return binaryOperator(
       anyOf(hasOperatorName("<"), hasOperatorName(">"), hasOperatorName("<="),
             hasOperatorName(">="), hasOperatorName("!=")),
-      hasEitherOperand(ignoringParenImpCasts(
-          declRefExpr(to(varDecl(hasType(isInteger())).bind(BindName))))),
-      hasEitherOperand(ignoringParenImpCasts(integerLiteral())));
+      hasEitherOperand(expr(ignoringParenImpCasts(declRefExpr(to(
+                                varDecl(hasType(isInteger())).bind(BindName)))))
+                           .bind("CounterExp")),
+      hasEitherOperand(
+          expr(unless(equalsBoundNode("CounterExp"))).bind("BoundExp")));
 }
 
-static internal::Matcher<Stmt> changeIntBoundNode(const std::string &NodeName) {
+static internal::Matcher<Stmt> changeIntBoundNode(StringRef NodeName) {
   return hasDescendant(binaryOperator(
       anyOf(hasOperatorName("="), hasOperatorName("+="), hasOperatorName("/="),
             hasOperatorName("*="), hasOperatorName("-=")),
@@ -58,13 +60,13 @@ static internal::Matcher<Stmt> changeIntBoundNode(const std::string &NodeName) {
           declRefExpr(to(varDecl(equalsBoundNode(NodeName))))))));
 }
 
-static internal::Matcher<Stmt> callByRef(std::string NodeName) {
+static internal::Matcher<Stmt> callByRef(StringRef NodeName) {
   return hasDescendant(callExpr(forEachArgumentWithParam(
       declRefExpr(hasDeclaration(equalsBoundNode(NodeName))),
       parmVarDecl(hasType(references(qualType(unless(isConstQualified()))))))));
 }
 
-static internal::Matcher<Stmt> getAddrTo(std::string NodeName) {
+static internal::Matcher<Stmt> getAddrTo(StringRef NodeName) {
   return hasDescendant(unaryOperator(
       hasOperatorName("&"),
       hasUnaryOperand(declRefExpr(hasDeclaration(equalsBoundNode(NodeName))))));
@@ -125,18 +127,35 @@ static internal::Matcher<Stmt> loopMatcher() {
   return anyOf(doWhileLoopMatcher(), whileLoopMatcher(), forLoopMatcher());
 }
 
-bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
+bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx,
+                            ExplodedNode *Pred, SValBuilder &SVB) {
 
   if (!isLoopStmt(LoopStmt))
     return false;
 
-  // TODO: In cases of while and do..while statements the value of initVarName
-  // should be checked to be known
-  // TODO: Match the cases where the bound is not a concrete literal but an
-  // integer with known value
+  // TODO: Check for possibilities of changing the bound expression.
 
   auto Matches = match(loopMatcher(), *LoopStmt, ASTCtx);
-  return !Matches.empty();
+  if (Matches.empty())
+    return false;
+
+  const Expr *BoundExp = Matches[0].getNodeAs<Expr>("BoundExp");
+  const Expr *CounterExp = Matches[0].getNodeAs<Expr>("CounterExp");
+  auto State = Pred->getState();
+  auto LCtx = Pred->getLocationContext();
+  SVal BoundVal = State->getSVal(BoundExp, LCtx);
+  SVal CounterVal = State->getSVal(CounterExp, LCtx);
+  if (SVB.getKnownValue(State, BoundVal))
+    llvm::errs() << "BoundVal: " << *SVB.getKnownValue(State, BoundVal) << "\n";
+  if (SVB.getKnownValue(State, CounterVal))
+    llvm::errs() << "CounterVal: " << *SVB.getKnownValue(State, CounterVal)
+                 << "\n";
+
+  if (!SVB.getKnownValue(State, BoundVal) ||
+      !SVB.getKnownValue(State, CounterVal))
+    return false;
+
+  return true;
 }
 
 namespace {
@@ -155,7 +174,7 @@ public:
     if (!S || (isLoopStmt(S) && S != LoopStmt) || Found)
       return;
     assert(StmtToBlockMap->getBlock(S));
-    if(StmtToBlockMap->getBlock(S) == SearchedBlock){
+    if (StmtToBlockMap->getBlock(S) == SearchedBlock) {
       Found = true;
       return;
     }
@@ -166,7 +185,7 @@ public:
         CallExp->getCalleeDecl()->getBody()) {
       auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
       for (auto &Block : *CalleeCFG) {
-        if(Block == SearchedBlock){
+        if (Block == SearchedBlock) {
           Found = true;
           return;
         }
@@ -175,7 +194,7 @@ public:
     VisitChildren(S);
   }
 
-  bool isBlockOfLoop(const CFGBlock* B, const Stmt* Loop){
+  bool isBlockOfLoop(const CFGBlock *B, const Stmt *Loop) {
     LoopStmt = Loop;
     SearchedBlock = B;
     Visit(LoopStmt);
@@ -188,20 +207,19 @@ private:
   CFGStmtMap *StmtToBlockMap;
   const Stmt *LoopStmt;
   bool Found;
-  const CFGBlock* SearchedBlock;
+  const CFGBlock *SearchedBlock;
 };
 }
 
-bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State, AnalysisManager &AMgr,
-    CFGStmtMap *StmtToBlockMap) {
+bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State,
+                         AnalysisManager &AMgr, CFGStmtMap *StmtToBlockMap) {
 
   for (auto Term : State->get<UnrolledLoops>()) {
     LoopVisitor LV(State, AMgr, StmtToBlockMap);
-    if(LV.isBlockOfLoop(Block,Term))
+    if (LV.isBlockOfLoop(Block, Term))
       return true;
   }
   return false;
-
 }
 
 ProgramStateRef markLoopAsUnrolled(const Stmt *Term, ProgramStateRef State) {
