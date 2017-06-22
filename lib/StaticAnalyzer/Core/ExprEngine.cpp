@@ -1496,9 +1496,6 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
   return true;
 }
 
-/*extern llvm::ImmutableMap<const Stmt *, llvm::ImmutableSet<const CFGBlock *>>
-        UnrolledLoopBlocks;*/
-
 /// Block entrance.  (Update counters).
 void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
@@ -1528,7 +1525,7 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
   }
 
   // If this block is terminated by a loop and it has already been visited the
-  // maximum number of times, widen the loop
+  // maximum number of times, widen the loop.
   unsigned int BlockCount = nodeBuilder.getContext().blockCount();
   if (BlockCount == AMgr.options.maxBlockVisitOnPath - 1 &&
       AMgr.options.shouldWidenLoops()) {
@@ -1549,6 +1546,7 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     static SimpleProgramPointTag tag(TagProviderName, "Block count exceeded");
     const ExplodedNode *Sink =
                    nodeBuilder.generateSink(Pred->getState(), Pred, &tag);
+
     // Check if we stopped at the top level function or not.
     // Root node should have the location context of the top most function.
     const LocationContext *CalleeLC = Pred->getLocation().getLocationContext();
