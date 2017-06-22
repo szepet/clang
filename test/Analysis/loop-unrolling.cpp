@@ -25,6 +25,26 @@ int simple_unroll2() {
   return 0;
 }
 
+int known_variable_unroll() {
+  int a[9];
+  int k = 42;
+  for (int i = 0; i < k; i++) {
+    a[i] = 42;
+  }
+  int b = 22 / (k - 42); // expected-warning {{Division by zero}}
+  return 0;
+}
+
+int known_variable_unroll2() {
+  int a[9];
+  int k = 42;
+  for (int i = 0; i < k / 2 + 12; i++) {
+    a[i] = 42;
+  }
+  int b = 22 / (k - 42); // expected-warning {{Division by zero}}
+  return 0;
+}
+
 int simple_no_unroll1() {
   int a[9];
   int k = 42;
@@ -175,5 +195,17 @@ int simple_no_unroll5() {
   return 0;
 }
 
+int simple_no_unroll6() {
+  int a[9];
+  int k = 42;
+  int i = getNum();
+  do {
+    a[i] = 42 * i;
+    ++i;
+  } while (i < 9);
+  int b = 22 / (k - 42); // expected-warning {{Division by zero}}
+  return 0;
+}
+
 // CHECK: ... Statistics Collected ...
-// CHECK: 10 LoopUnrolling    - The # of times a loop has got completely unrolled
+// CHECK: 12 LoopUnrolling    - The # of times a loop has got completely unrolled
