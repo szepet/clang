@@ -83,7 +83,9 @@ public:
               PostImplicitCallKind,
               MinImplicitCallKind = PreImplicitCallKind,
               MaxImplicitCallKind = PostImplicitCallKind,
-              EpsilonKind};
+              EpsilonKind,
+              ScopeEnterKind,
+              ScopeExitKind};
 
 private:
   const void *Data1;
@@ -212,6 +214,54 @@ public:
                                       const LocationContext *LC,
                                       const ProgramPointTag *tag);
 };
+
+
+/// Represents a point where a new scope is being entered.
+class ScopeEnter : public ProgramPoint {
+public:
+    ScopeEnter(const Stmt *TriggerStmt, const ScopeContext *ScopeCtx,
+               const LocationContext *CurrCtx)
+            : ProgramPoint(TriggerStmt, CurrCtx, ScopeEnterKind, ScopeCtx) {}
+
+    const Stmt *getTriggerStmt() const {
+      return static_cast<const Stmt *>(getData1());
+    }
+
+    const LocationContext *getParentContext() const {
+      return static_cast<const LocationContext *>(getData2());
+    }
+
+private:
+    ScopeEnter() {}
+    friend class ProgramPoint;
+    static bool isKind(const ProgramPoint &Location) {
+      return Location.getKind() == ScopeEnterKind;
+    }
+};
+
+/// Represents a point where a scope is being exited.
+class ScopeExit : public ProgramPoint {
+public:
+    ScopeExit(const Stmt *TriggerStmt, const ScopeContext *ScopeCtx,
+              const LocationContext *TargetCtx)
+            : ProgramPoint(TriggerStmt, ScopeCtx, ScopeExitKind, TargetCtx) {}
+
+    const Stmt *getTriggerStmt() const {
+      return static_cast<const Stmt *>(getData1());
+    }
+
+    const LocationContext *getScopeContext() const {
+      return static_cast<const LocationContext *>(getData2());
+    }
+
+private:
+    ScopeExit() {}
+    friend class ProgramPoint;
+    static bool isKind(const ProgramPoint &Location) {
+      return Location.getKind() == ScopeExitKind;
+    }
+};
+
 
 class BlockEntrance : public ProgramPoint {
 public:

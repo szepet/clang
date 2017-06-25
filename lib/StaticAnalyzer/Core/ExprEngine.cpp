@@ -357,6 +357,12 @@ void ExprEngine::processCFGElement(const CFGElement E, ExplodedNode *Pred,
     case CFGElement::Initializer:
       ProcessInitializer(E.castAs<CFGInitializer>().getInitializer(), Pred);
       return;
+    case CFGElement::ScopeBegin:
+      ProcessScopeEnter(E.castAs<CFGScopeBegin>(), Pred);
+      return;
+    case CFGElement::ScopeEnd:
+      ProcessScopeExit(E.castAs<CFGScopeEnd>(), Pred);
+      return;
     case CFGElement::NewAllocator:
       ProcessNewAllocator(E.castAs<CFGNewAllocator>().getAllocatorExpr(),
                           Pred);
@@ -598,6 +604,57 @@ void ExprEngine::ProcessInitializer(const CFGInitializer Init,
 
   // Enqueue the new nodes onto the work list.
   Engine.enqueue(Dst, currBldrCtx->getBlock(), currStmtIdx);
+}
+
+void ExprEngine::ProcessScopeEnter(const CFGScopeBegin SC, ExplodedNode *Pred) {
+  llvm::errs() << currStmtIdx << "\n";
+  llvm::errs() << "SCOPENTER DUDE\n";
+  ExplodedNodeSet Src(Pred), Dst;
+  NodeBuilder Bldr(Pred, Dst, *currBldrCtx);
+  const Stmt* Term = SC.getTriggerStmt();
+  const LocationContext *ParentCtx = Pred->getLocationContext();
+  // We don't clean up dead bindings here.
+  const StackFrameContext *StackFrame = ParentCtx->getCurrentStackFrame();
+
+  // Construct a new scope frame for the statement.
+  AnalysisDeclContext *ADC = AMgr.getAnalysisDeclContext(StackFrame->getDecl());
+  const ScopeContext *ScopeCtx = ADC->getScope(ParentCtx, Term,
+                                               currBldrCtx->blockCount());
+
+  ScopeEnter Enter(Term, ScopeCtx, ParentCtx);
+  PostStmt PP(Term,ProgramPoint::PostStmtKind,Pred->getLocationContext());  //StmtNodeBuilder Bldr(Pred, DstTop, *currBldrCtx);
+  // If this block is terminated by a loop which has a known bound (and meets
+  // other constraints) then consider completely unrolling it.
+
+  if (AMgr.options.shouldUnrollLoops()) {
+
+    if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext())) {
+      Term->dump();
+      ProgramStateRef UnrolledState =
+              markLoopAsUnrolled(Term, Pred->getState());
+      if (UnrolledState != Pred->getState()) {
+        Bldr.generateNode(PP, UnrolledState, Pred);
+        Engine.enqueue(Dst);
+        return;
+      }
+    }
+  }
+
+  //Bldr.generateNode(Pred->getLocation(), Pred->getState(), Pred);
+  Dst.Add(Pred);
+  llvm::errs() << (Dst.empty()?"EMPRTY":"TELEVANBASZOD") << "\n";
+  currBldrCtx->getBlock()->dump();
+  Engine.enqueue(Dst, currBldrCtx->getBlock(), currStmtIdx+1);
+
+}
+
+void ExprEngine::ProcessScopeExit(const CFGScopeEnd SC, ExplodedNode *Pred) {
+  llvm::errs() << "SCOPEXIT DUDE\n";
+  ExplodedNodeSet Dst;
+  Dst.Add(Pred);
+  currBldrCtx->getBlock()->dump();
+  Engine.enqueue(Dst, currBldrCtx->getBlock(), currStmtIdx);
+
 }
 
 void ExprEngine::ProcessImplicitDtor(const CFGImplicitDtor D,
@@ -1502,19 +1559,8 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          ExplodedNode *Pred) {
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
 
-  // If this block is terminated by a loop which has a known bound (and meets
-  // other constraints) then consider completely unrolling it.
   if (AMgr.options.shouldUnrollLoops()) {
     const CFGBlock *ActualBlock = nodeBuilder.getContext().getBlock();
-    const Stmt *Term = ActualBlock->getTerminator();
-    if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext())) {
-      ProgramStateRef UnrolledState =
-              markLoopAsUnrolled(Term, Pred->getState());
-      if (UnrolledState != Pred->getState())
-        nodeBuilder.generateNode(UnrolledState, Pred);
-      return;
-    }
-
     if (isUnrolledLoopBlock(ActualBlock, Pred->getState(), AMgr,
                             Pred->getLocationContext()
                                     ->getAnalysisDeclContext()
@@ -1536,7 +1582,7 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     // Widen.
     const LocationContext *LCtx = Pred->getLocationContext();
     ProgramStateRef WidenedState =
-        getWidenedLoopState(Pred->getState(), LCtx, BlockCount, Term);
+            getWidenedLoopState(Pred->getState(), LCtx, BlockCount, Term);
     nodeBuilder.generateNode(WidenedState, Pred);
     return;
   }
@@ -1545,14 +1591,14 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
   if (BlockCount >= AMgr.options.maxBlockVisitOnPath) {
     static SimpleProgramPointTag tag(TagProviderName, "Block count exceeded");
     const ExplodedNode *Sink =
-                   nodeBuilder.generateSink(Pred->getState(), Pred, &tag);
+            nodeBuilder.generateSink(Pred->getState(), Pred, &tag);
 
     // Check if we stopped at the top level function or not.
     // Root node should have the location context of the top most function.
     const LocationContext *CalleeLC = Pred->getLocation().getLocationContext();
     const LocationContext *CalleeSF = CalleeLC->getCurrentStackFrame();
     const LocationContext *RootLC =
-                        (*G.roots_begin())->getLocation().getLocationContext();
+            (*G.roots_begin())->getLocation().getLocationContext();
     if (RootLC->getCurrentStackFrame() != CalleeSF) {
       Engine.FunctionSummaries->markReachedMaxBlockCount(CalleeSF->getDecl());
 

@@ -67,6 +67,7 @@ AnalysisDeclContextManager::AnalysisDeclContextManager(bool useUnoptimizedCFG,
                                                        bool addImplicitDtors,
                                                        bool addInitializers,
                                                        bool addTemporaryDtors,
+                                                       bool addScopes,
                                                        bool synthesizeBodies,
                                                        bool addStaticInitBranch,
                                                        bool addCXXNewAllocator,
@@ -77,6 +78,7 @@ AnalysisDeclContextManager::AnalysisDeclContextManager(bool useUnoptimizedCFG,
   cfgBuildOptions.AddImplicitDtors = addImplicitDtors;
   cfgBuildOptions.AddInitializers = addInitializers;
   cfgBuildOptions.AddTemporaryDtors = addTemporaryDtors;
+  cfgBuildOptions.AddScopes = addScopes;
   cfgBuildOptions.AddStaticInitBranches = addStaticInitBranch;
   cfgBuildOptions.AddCXXNewAllocator = addCXXNewAllocator;
 }

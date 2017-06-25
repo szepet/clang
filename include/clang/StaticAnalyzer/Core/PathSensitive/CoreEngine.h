@@ -180,7 +180,7 @@ public:
 };
 
 // TODO: Turn into a calss.
-struct NodeBuilderContext {
+struct  NodeBuilderContext {
   const CoreEngine &Eng;
   const CFGBlock *Block;
   const LocationContext *LC;

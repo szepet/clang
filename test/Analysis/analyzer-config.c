@@ -12,6 +12,7 @@ void foo() {
 
 // CHECK: [config]
 // CHECK-NEXT: cfg-conditional-static-initializers = true
+// CHECK-NEXT: cfg-scopes = false
 // CHECK-NEXT: cfg-temporary-dtors = false
 // CHECK-NEXT: faux-bodies = true
 // CHECK-NEXT: graph-trim-interval = 1000
@@ -28,4 +29,4 @@ void foo() {
 // CHECK-NEXT: unroll-loops = false
 // CHECK-NEXT: widen-loops = false
 // CHECK-NEXT: [stats]
-// CHECK-NEXT: num-entries = 16
+// CHECK-NEXT: num-entries = 17

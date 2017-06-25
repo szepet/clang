@@ -138,42 +138,5 @@ int simple_no_unroll4() {
   return 0;
 }
 
-// Testing do-while loops.
-int simple_unroll5() {
-  int a[9];
-  int k = 42;
-  int i = 0;
-  do {
-    a[i] = 42 * i;
-    ++i;
-  } while (i < 9);
-  int b = 22 / (k - 42); // expected-warning {{Division by zero}}
-  return 0;
-}
-
-int simple_unroll6() {
-  int a[22];
-  int k = 42;
-  int i = 21;
-  do {
-    a[i] = 42 * i;
-    --i;
-  } while (i > 7);
-  int b = 22 / (k - 42); // expected-warning {{Division by zero}}
-  return 0;
-}
-
-int simple_no_unroll5() {
-  int a[9];
-  int k = 42;
-  int i = 0;
-  do {
-    a[i] = 42 * i;
-    i += getNum();
-  } while (i < 9);
-  int b = 22 / (k - 42); // expected-warning {{Division by zero}}
-  return 0;
-}
-
 // CHECK: ... Statistics Collected ...
-// CHECK: 10 LoopUnrolling    - The # of times a loop has got completely unrolled
+// CHECK: 8 LoopUnrolling    - The # of times a loop has got completely unrolled

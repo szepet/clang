@@ -172,6 +172,12 @@ bool AnalyzerOptions::includeTemporaryDtorsInCFG() {
                           /* Default = */ false);
 }
 
+bool AnalyzerOptions::includeScopesInCFG() {
+  return getBooleanOption(IncludeScopesInCFG,
+                          "cfg-scopes",
+                          /* Default = */ false);
+}
+
 bool AnalyzerOptions::mayInlineCXXStandardLibrary() {
   return getBooleanOption(InlineCXXStandardLibrary,
                           "c++-stdlib-inlining",

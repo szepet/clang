@@ -243,10 +243,12 @@ void CoreEngine::dispatchWorkItem(ExplodedNode* Pred, ProgramPoint Loc,
   // Dispatch on the location type.
   switch (Loc.getKind()) {
     case ProgramPoint::BlockEdgeKind:
+      llvm::errs() << "Edge";
       HandleBlockEdge(Loc.castAs<BlockEdge>(), Pred);
       break;
 
     case ProgramPoint::BlockEntranceKind:
+      llvm::errs() << "Entrance";
       HandleBlockEntrance(Loc.castAs<BlockEntrance>(), Pred);
       break;
 
@@ -255,15 +257,18 @@ void CoreEngine::dispatchWorkItem(ExplodedNode* Pred, ProgramPoint Loc,
       break;
 
     case ProgramPoint::CallEnterKind: {
+      llvm::errs() << "CE";
       HandleCallEnter(Loc.castAs<CallEnter>(), Pred);
       break;
     }
 
     case ProgramPoint::CallExitBeginKind:
+      llvm::errs() << "CEB";
       SubEng.processCallExit(Pred);
       break;
 
     case ProgramPoint::EpsilonKind: {
+      llvm::errs() << "Eps";
       assert(Pred->hasSinglePred() &&
              "Assume epsilon has exactly one predecessor by construction");
       ExplodedNode *PNode = Pred->getFirstPred();
@@ -274,7 +279,9 @@ void CoreEngine::dispatchWorkItem(ExplodedNode* Pred, ProgramPoint Loc,
       assert(Loc.getAs<PostStmt>() ||
              Loc.getAs<PostInitializer>() ||
              Loc.getAs<PostImplicitCall>() ||
-             Loc.getAs<CallExitEnd>());
+             Loc.getAs<CallExitEnd>()||
+             Loc.getAs<ScopeEnter>() ||
+             Loc.getAs<ScopeExit>());
       HandlePostStmt(WU.getBlock(), WU.getIndex(), Pred);
       break;
   }
@@ -566,7 +573,9 @@ void CoreEngine::enqueueStmtNode(ExplodedNode *N,
 
   // Do not create extra nodes. Move to the next CFG element.
   if (N->getLocation().getAs<PostInitializer>() ||
-      N->getLocation().getAs<PostImplicitCall>()) {
+      N->getLocation().getAs<PostImplicitCall>() ||
+      N->getLocation().getAs<ScopeEnter>() ||
+      N->getLocation().getAs<ScopeExit>()) {
     WList->enqueue(N, Block, Idx+1);
     return;
   }
@@ -581,10 +590,21 @@ void CoreEngine::enqueueStmtNode(ExplodedNode *N,
     return;
   }
 
+  if ((*Block)[Idx].getKind() == CFGElement::ScopeBegin) {
+    WList->enqueue(N, Block, Idx+1);
+    return;
+  }
+
+  if ((*Block)[Idx].getKind() == CFGElement::ScopeEnd) {
+    WList->enqueue(N, Block, Idx+1);
+    return;
+  }
+
+  llvm::errs() << "DUUUDE\n";
   // At this point, we know we're processing a normal statement.
   CFGStmt CS = (*Block)[Idx].castAs<CFGStmt>();
   PostStmt Loc(CS.getStmt(), N->getLocationContext());
-
+  llvm::errs() << "DUUUDE2\n";
   if (Loc == N->getLocation().withTag(nullptr)) {
     // Note: 'N' should be a fresh node because otherwise it shouldn't be
     // a member of Deferred.

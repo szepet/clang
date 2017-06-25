@@ -482,6 +482,8 @@ void AnalysisConsumer::HandleDeclsCallGraph(const unsigned LocalTUDeclsSize) {
 
     CallGraphNode *N = *I;
     Decl *D = N->getDecl();
+    if(auto Name = dyn_cast_or_null<NamedDecl>(D))
+      llvm::errs() << Name->getNameAsString();
 
     // Skip the abstract root node.
     if (!D)

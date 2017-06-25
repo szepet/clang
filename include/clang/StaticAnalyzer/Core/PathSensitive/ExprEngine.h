@@ -200,6 +200,10 @@ public:
 
   void ProcessImplicitDtor(const CFGImplicitDtor D, ExplodedNode *Pred);
 
+  void ProcessScopeEnter(const CFGScopeBegin SC, ExplodedNode *Pred);
+
+  void ProcessScopeExit(const CFGScopeEnd SC, ExplodedNode *Pred);
+
   void ProcessNewAllocator(const CXXNewExpr *NE, ExplodedNode *Pred);
 
   void ProcessAutomaticObjDtor(const CFGAutomaticObjDtor D,

@@ -426,6 +426,7 @@ public:
                              bool addImplicitDtors = false,
                              bool addInitializers = false,
                              bool addTemporaryDtors = false,
+                             bool addScopes = false,
                              bool synthesizeBodies = false,
                              bool addStaticInitBranches = false,
                              bool addCXXNewAllocator = true,
