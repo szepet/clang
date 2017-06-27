@@ -31,8 +31,7 @@ using namespace clang::ast_matchers;
 STATISTIC(NumTimesLoopUnrolled,
           "The # of times a loop has got completely unrolled");
 
-REGISTER_SET_WITH_PROGRAMSTATE(UnrolledLoops, const Stmt *)
-REGISTER_SET_WITH_PROGRAMSTATE(UnrolledLoopBlocks, const CFGBlock *)
+REGISTER_MAP_WITH_PROGRAMSTATE(UnrolledLoops, const Stmt *, const CFGStmtMap *)
 
 namespace clang {
 namespace ento {
@@ -60,7 +59,7 @@ static internal::Matcher<Stmt> changeIntBoundNode(StringRef NodeName) {
 
 static internal::Matcher<Stmt> callByRef(StringRef NodeName) {
   return hasDescendant(callExpr(forEachArgumentWithParam(
-      declRefExpr(hasDeclaration(equalsBoundNode(NodeName))),
+      declRefExpr(to(varDecl(equalsBoundNode(NodeName)))),
       parmVarDecl(hasType(references(qualType(unless(isConstQualified()))))))));
 }
 
@@ -140,10 +139,10 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
 }
 
 namespace {
-class LoopVisitor : public ConstStmtVisitor<LoopVisitor> {
+class LoopBlockVisitor : public ConstStmtVisitor<LoopBlockVisitor> {
 public:
-  LoopVisitor(ProgramStateRef St, AnalysisManager &AMgr, CFGStmtMap *M)
-      : State(St), AMgr(AMgr), StmtToBlockMap(M), Found(false) {}
+  LoopBlockVisitor(llvm::SmallPtrSet<const CFGBlock *, 8> &BS)
+      : BlockSet(BS), Found(false) {}
 
   void VisitChildren(const Stmt *S) {
     for (const Stmt *Child : S->children())
@@ -154,60 +153,57 @@ public:
   void VisitStmt(const Stmt *S) {
     if (!S || (isLoopStmt(S) && S != LoopStmt) || Found)
       return;
-    assert(StmtToBlockMap->getBlock(S));
-    if (StmtToBlockMap->getBlock(S) == SearchedBlock) {
-      Found = true;
-      return;
-    }
 
-    // In case of function calls investigate their CFGBlocks as well.
-    auto CallExp = dyn_cast<CallExpr>(S);
-    if (CallExp && CallExp->getCalleeDecl() &&
-        CallExp->getCalleeDecl()->getBody()) {
-      auto CalleeCFG = AMgr.getCFG(CallExp->getCalleeDecl());
-      for (auto &Block : *CalleeCFG) {
-        if (Block == SearchedBlock) {
-          Found = true;
-          return;
-        }
-      }
-    }
+    BlockSet.insert(StmtToBlockMap->getBlock(S));
+
     VisitChildren(S);
   }
 
-  bool isBlockOfLoop(const CFGBlock *B, const Stmt *Loop) {
+  void setBlocksOfLoop(const Stmt *Loop, const CFGStmtMap *M) {
+    BlockSet.clear();
+    StmtToBlockMap = M;
     LoopStmt = Loop;
-    SearchedBlock = B;
     Visit(LoopStmt);
-    return Found;
   }
 
 private:
-  ProgramStateRef State;
-  AnalysisManager &AMgr;
-  CFGStmtMap *StmtToBlockMap;
-  const Stmt *LoopStmt;
+  llvm::SmallPtrSet<const CFGBlock *, 8> &BlockSet;
   bool Found;
-  const CFGBlock *SearchedBlock;
+  const CFGStmtMap *StmtToBlockMap;
+  const Stmt *LoopStmt;
 };
 }
 
-bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State,
-                         AnalysisManager &AMgr, CFGStmtMap *StmtToBlockMap) {
-
+bool isUnrolledLoopBlock(const CFGBlock *Block, ExplodedNode *Prev) {
+  llvm::SmallPtrSet<const CFGBlock *, 8> BlockSet;
+  const CFGBlock *SearchedBlock;
+  auto State = Prev->getState();
+  LoopBlockVisitor LBV(BlockSet);
+  // Check the CFGBlocks of every marked loop.
   for (auto Term : State->get<UnrolledLoops>()) {
-    LoopVisitor LV(State, AMgr, StmtToBlockMap);
-    if (LV.isBlockOfLoop(Block, Term))
+    SearchedBlock = Block;
+    const StackFrameContext *StackFrame = Prev->getStackFrame();
+    LBV.setBlocksOfLoop(Term.first, Term.second);
+    // In case of an inlined function call check if any of its callSiteBlock is
+    // marked
+    while (SearchedBlock && BlockSet.find(SearchedBlock) == BlockSet.end()) {
+      SearchedBlock = StackFrame->getCallSiteBlock();
+      StackFrame = StackFrame->getParent()->getCurrentStackFrame();
+    }
+
+    if (SearchedBlock)
       return true;
   }
+
   return false;
 }
 
-ProgramStateRef markLoopAsUnrolled(const Stmt *Term, ProgramStateRef State) {
+ProgramStateRef markLoopAsUnrolled(const Stmt *Term, ProgramStateRef State,
+                                   CFGStmtMap *StmtToBlockMap) {
   if (State->contains<UnrolledLoops>(Term))
     return State;
 
-  State = State->add<UnrolledLoops>(Term);
+  State = State->set<UnrolledLoops>(Term, StmtToBlockMap);
   ++NumTimesLoopUnrolled;
   return State;
 }

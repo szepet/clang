@@ -25,9 +25,10 @@
 
 namespace clang {
 namespace ento {
-ProgramStateRef markLoopAsUnrolled(const Stmt *Term, ProgramStateRef State);
-bool isUnrolledLoopBlock(const CFGBlock *Block, ProgramStateRef State,
-                         AnalysisManager &AMgr, CFGStmtMap *StmtToBlockMap);
+    ProgramStateRef markLoopAsUnrolled(const Stmt *Term, ProgramStateRef State,
+                                       CFGStmtMap *StmtToBlockMap);
+    bool isUnrolledLoopBlock(const CFGBlock *Block,
+                             ExplodedNode *Prev);
 bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx);
 
 } // end namespace ento

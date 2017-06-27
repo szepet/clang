@@ -1501,7 +1501,6 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
-
   // If this block is terminated by a loop which has a known bound (and meets
   // other constraints) then consider completely unrolling it.
   if (AMgr.options.shouldUnrollLoops()) {
@@ -1509,16 +1508,13 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     const Stmt *Term = ActualBlock->getTerminator();
     if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext())) {
       ProgramStateRef UnrolledState =
-              markLoopAsUnrolled(Term, Pred->getState());
+              markLoopAsUnrolled(Term, Pred->getState(), Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap());
       if (UnrolledState != Pred->getState())
         nodeBuilder.generateNode(UnrolledState, Pred);
       return;
     }
 
-    if (isUnrolledLoopBlock(ActualBlock, Pred->getState(), AMgr,
-                            Pred->getLocationContext()
-                                    ->getAnalysisDeclContext()
-                                    ->getCFGStmtMap()))
+    if (isUnrolledLoopBlock(ActualBlock, Pred))
       return;
     if (ActualBlock->empty())
       return;
