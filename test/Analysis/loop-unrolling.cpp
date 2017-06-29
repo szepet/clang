@@ -1,6 +1,6 @@
 // REQUIRES: asserts
 // RUN: %clang_analyze_cc1 -analyzer-checker=core -analyzer-config unroll-loops=true -analyzer-stats -verify %s 2>&1 | FileCheck %s
-
+//
 int getNum();
 void foo(int &);
 // Testing for loops.
@@ -102,6 +102,36 @@ int nested_both_unrolled() {
   return 0;
 }
 
+int simple_known_bound_loop() {
+  for (int i = 2; i < 12; i++) {
+  }
+  return 0;
+}
+
+int simple_unknown_bound_loop() {
+  for (int i = 2; i < getNum(); i++) {
+  }
+  return 0;
+}
+
+int nested_inlined_unroll1() {
+  int k;
+  for (int i = 0; i < 9; i++) {
+    k = simple_known_bound_loop(); // no reevaluation without inlining
+  }
+  int a = 22 / k; // expected-warning {{Division by zero}}
+  return 0;
+}
+
+int nested_inlined_no_unroll1() {
+  int k;
+  for (int i = 0; i < 9; i++) {
+    k = simple_unknown_bound_loop(); // reevaluation without inlining
+  }
+  int a = 22 / k; // no-warning
+  return 0;
+}
+
 // Testing while loops.
 int simple_unroll3() {
   int a[9];
@@ -176,4 +206,5 @@ int simple_no_unroll5() {
 }
 
 // CHECK: ... Statistics Collected ...
-// CHECK: 10 LoopUnrolling    - The # of times a loop has got completely unrolled
+// CHECK: 5 ExprEngine       - The # of times we re-evaluated a call without inlining
+// CHECK: 13 LoopUnrolling    - The # of times a loop has got completely unrolled

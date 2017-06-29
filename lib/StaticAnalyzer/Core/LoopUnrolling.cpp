@@ -175,17 +175,23 @@ private:
 }
 
 bool isUnrolledLoopBlock(const CFGBlock *Block, ExplodedNode *Prev) {
-  llvm::SmallPtrSet<const CFGBlock *, 8> BlockSet;
-  const CFGBlock *SearchedBlock;
+  const Stmt* Term = Block->getTerminator();
   auto State = Prev->getState();
+  // In case of nested loops in an inlined function should not be unrolled only
+  // if the inner loop is marked.
+  if (Term && isLoopStmt(Term) && !State->contains<UnrolledLoops>(Term))
+    return false;
+
+  const CFGBlock *SearchedBlock;
+  llvm::SmallPtrSet<const CFGBlock *, 8> BlockSet;
   LoopBlockVisitor LBV(BlockSet);
   // Check the CFGBlocks of every marked loop.
-  for (auto Term : State->get<UnrolledLoops>()) {
+  for (auto& E : State->get<UnrolledLoops>()) {
     SearchedBlock = Block;
     const StackFrameContext *StackFrame = Prev->getStackFrame();
-    LBV.setBlocksOfLoop(Term.first, Term.second);
+    LBV.setBlocksOfLoop(E.first, E.second);
     // In case of an inlined function call check if any of its callSiteBlock is
-    // marked
+    // marked.
     while (SearchedBlock && BlockSet.find(SearchedBlock) == BlockSet.end()) {
       SearchedBlock = StackFrame->getCallSiteBlock();
       StackFrame = StackFrame->getParent()->getCurrentStackFrame();
