@@ -56,7 +56,6 @@ add_clang_library(clangStaticAnalyzerCore
   LINK_LIBS
   clangAST
   clangASTMatchers
-  clangDynamicASTMatchers
   clangAnalysis
   clangBasic
   clangLex

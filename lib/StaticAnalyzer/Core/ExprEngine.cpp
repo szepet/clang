@@ -1501,14 +1501,17 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
-  // If this block is terminated by a loop which has a known bound (and meets
+  // If we reach a loop which has a known bound (and meets
   // other constraints) then consider completely unrolling it.
   if (AMgr.options.shouldUnrollLoops()) {
     const CFGBlock *ActualBlock = nodeBuilder.getContext().getBlock();
     const Stmt *Term = ActualBlock->getTerminator();
     if (Term && shouldCompletelyUnroll(Term, AMgr.getASTContext())) {
       ProgramStateRef UnrolledState =
-              markLoopAsUnrolled(Term, Pred->getState(), Pred->getLocationContext()->getAnalysisDeclContext()->getCFGStmtMap());
+              markLoopAsUnrolled(Term, Pred->getState(),
+                                 Pred->getLocationContext()
+                                         ->getAnalysisDeclContext()
+                                         ->getCFGStmtMap());
       if (UnrolledState != Pred->getState())
         nodeBuilder.generateNode(UnrolledState, Pred);
       return;
@@ -1686,7 +1689,7 @@ void ExprEngine::processBranch(const Stmt *Condition, const Stmt *Term,
   const LocationContext *LCtx = Pred->getLocationContext();
   PrettyStackTraceLocationContext StackCrashInfo(LCtx);
   currBldrCtx = &BldCtx;
-
+  llvm::errs() << BldCtx.blockCount() << "\n";
   // Check for NULL conditions; e.g. "for(;;)"
   if (!Condition) {
     BranchNodeBuilder NullCondBldr(Pred, Dst, BldCtx, DstT, DstF);
@@ -1744,6 +1747,7 @@ void ExprEngine::processBranch(const Stmt *Condition, const Stmt *Term,
     // If the condition is still unknown, give up.
     if (X.isUnknownOrUndef()) {
       builder.generateNode(PrevState, true, PredI);
+      
       builder.generateNode(PrevState, false, PredI);
       continue;
     }

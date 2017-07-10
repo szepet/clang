@@ -60,6 +60,18 @@ int simple_no_unroll3() {
   return 0;
 }
 
+int simple_no_unroll4() {
+  int a[9];
+  int k = 42;
+  int i;
+  for (i = 0; i < 9; i++) {
+    a[i] = 42;
+    int &j = i;
+  }
+  int b = 22 / (k - 42); // no-warning
+  return 0;
+}
+
 int nested_outer_unrolled() {
   int a[9];
   int k = 42;
@@ -132,79 +144,6 @@ int nested_inlined_no_unroll1() {
   return 0;
 }
 
-// Testing while loops.
-int simple_unroll3() {
-  int a[9];
-  int k = 42;
-  int i = 0;
-  while (i < 9) {
-    a[i] = 42 * i;
-    ++i;
-  }
-  int b = 22 / (k - 42); // expected-warning {{Division by zero}}
-  return 0;
-}
-
-int simple_unroll4() {
-  int a[22];
-  int k = 42;
-  int i = 21;
-  while (i > 7) {
-    a[i] = 42 * i;
-    --i;
-  }
-  int b = 22 / (k - 42); // expected-warning {{Division by zero}}
-  return 0;
-}
-
-int simple_no_unroll4() {
-  int a[9];
-  int k = 42;
-  int i = 0;
-  while (i < 9) {
-    a[i] = 42 * i;
-  }
-  int b = 22 / (k - 42); // no-warning
-  return 0;
-}
-
-// Testing do-while loops.
-int simple_unroll5() {
-  int a[9];
-  int k = 42;
-  int i = 0;
-  do {
-    a[i] = 42 * i;
-    ++i;
-  } while (i < 9);
-  int b = 22 / (k - 42); // expected-warning {{Division by zero}}
-  return 0;
-}
-
-int simple_unroll6() {
-  int a[22];
-  int k = 42;
-  int i = 21;
-  do {
-    a[i] = 42 * i;
-    --i;
-  } while (i > 7);
-  int b = 22 / (k - 42); // expected-warning {{Division by zero}}
-  return 0;
-}
-
-int simple_no_unroll5() {
-  int a[9];
-  int k = 42;
-  int i = 0;
-  do {
-    a[i] = 42 * i;
-    i += getNum();
-  } while (i < 9);
-  int b = 22 / (k - 42); // expected-warning {{Division by zero}}
-  return 0;
-}
-
 // CHECK: ... Statistics Collected ...
 // CHECK: 5 ExprEngine       - The # of times we re-evaluated a call without inlining
-// CHECK: 13 LoopUnrolling    - The # of times a loop has got completely unrolled
+// CHECK: 9 LoopUnrolling    - The # of times a loop has got completely unrolled

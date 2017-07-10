@@ -19,16 +19,12 @@
 #include "clang/Analysis/CFG.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/AnalysisManager.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 
 namespace clang {
 namespace ento {
-    ProgramStateRef markLoopAsUnrolled(const Stmt *Term, ProgramStateRef State,
-                                       CFGStmtMap *StmtToBlockMap);
-    bool isUnrolledLoopBlock(const CFGBlock *Block,
-                             ExplodedNode *Prev);
+ProgramStateRef markLoopAsUnrolled(const Stmt *Term, ProgramStateRef State,
+                                   CFGStmtMap *StmtToBlockMap);
+bool isUnrolledLoopBlock(const CFGBlock *Block, ExplodedNode *Prev);
 bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx);
 
 } // end namespace ento
