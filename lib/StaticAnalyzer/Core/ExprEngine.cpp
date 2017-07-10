@@ -15,13 +15,13 @@
 
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
 #include "PrettyStackTraceLocationContext.h"
+#include "clang/Analysis/CFGStmtMap.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
-#include "clang/AST/StmtVisitor.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/ParentMap.h"
-#include "clang/Analysis/CFGStmtMap.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtVisitor.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/Basic/Builtins.h"
@@ -1689,7 +1689,7 @@ void ExprEngine::processBranch(const Stmt *Condition, const Stmt *Term,
   const LocationContext *LCtx = Pred->getLocationContext();
   PrettyStackTraceLocationContext StackCrashInfo(LCtx);
   currBldrCtx = &BldCtx;
-  llvm::errs() << BldCtx.blockCount() << "\n";
+
   // Check for NULL conditions; e.g. "for(;;)"
   if (!Condition) {
     BranchNodeBuilder NullCondBldr(Pred, Dst, BldCtx, DstT, DstF);
@@ -1747,8 +1747,9 @@ void ExprEngine::processBranch(const Stmt *Condition, const Stmt *Term,
     // If the condition is still unknown, give up.
     if (X.isUnknownOrUndef()) {
       builder.generateNode(PrevState, true, PredI);
-      
+      if(!(isa<ForStmt>(Term) && BldCtx.blockCount() == 1))
       builder.generateNode(PrevState, false, PredI);
+
       continue;
     }
 
@@ -1766,7 +1767,7 @@ void ExprEngine::processBranch(const Stmt *Condition, const Stmt *Term,
     }
 
     // Process the false branch.
-    if (builder.isFeasible(false)) {
+    if (builder.isFeasible(false) && !(isa<ForStmt>(Term) && BldCtx.blockCount() == 1 && builder.isFeasible(true))) {
       if (StFalse)
         builder.generateNode(StFalse, false, PredI);
       else

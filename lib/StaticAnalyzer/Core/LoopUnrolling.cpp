@@ -106,8 +106,7 @@ static internal::Matcher<Stmt> forLoopMatcher() {
              hasIncrement(unaryOperator(
                  anyOf(hasOperatorName("++"), hasOperatorName("--")),
                  hasUnaryOperand(declRefExpr(
-                     to(varDecl(allOf(equalsBoundNode("initVarName"),
-                                      hasType(isInteger())))))))),
+                     to(varDecl(equalsBoundNode("initVarName"))))))),
              unless(hasBody(hasSuspiciousStmt("initVarName")))).bind("forLoop");
 }
 
