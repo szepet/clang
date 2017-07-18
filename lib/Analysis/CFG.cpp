@@ -1258,10 +1258,12 @@ static QualType getReferenceInitTemporaryType(ASTContext &Context,
   return Init->getType();
 }
 
+
+//TODO: Support adding LoopExit element to the CFG in case where the loop is
+// ended by ReturnStmt.
 void CFGBuilder::addLoopExit(CFGBlock* B, const Stmt* LoopStmt){
   if(!BuildOpts.AddLoopExit)
     return;
-  llvm::errs() << "dude\n";
   appendLoopExit(B, LoopStmt);
 }
 
