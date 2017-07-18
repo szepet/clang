@@ -169,7 +169,7 @@ private:
   }
 };
 
-/// Represents the point where a loop is exited.
+/// Represents the point where a loop ends.
 class CFGLoopExit : public CFGElement {
 public:
     explicit CFGLoopExit(const Stmt *stmt)
