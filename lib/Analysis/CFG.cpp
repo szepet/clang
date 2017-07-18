@@ -602,6 +602,7 @@ private:
     return Visit(S, AddStmtChoice::AlwaysAdd);
   }
   CFGBlock *addInitializer(CXXCtorInitializer *I);
+  void addLoopExit(CFGBlock* B, const Stmt* LoopStmt);
   void addAutomaticObjDtors(LocalScope::const_iterator B,
                             LocalScope::const_iterator E, Stmt *S);
   void addLifetimeEnds(LocalScope::const_iterator B,
@@ -650,6 +651,10 @@ private:
 
   void appendLifetimeEnds(CFGBlock *B, VarDecl *VD, Stmt *S) {
     B->appendLifetimeEnds(VD, S, cfg->getBumpVectorContext());
+  }
+
+  void appendLoopExit(CFGBlock *B, const Stmt *S) {
+    B->appendLoopExit(S, cfg->getBumpVectorContext());
   }
 
   void appendDeleteDtor(CFGBlock *B, CXXRecordDecl *RD, CXXDeleteExpr *DE) {
@@ -1253,6 +1258,13 @@ static QualType getReferenceInitTemporaryType(ASTContext &Context,
   return Init->getType();
 }
 
+void CFGBuilder::addLoopExit(CFGBlock* B, const Stmt* LoopStmt){
+  if(!BuildOpts.AddLoopExit)
+    return;
+  llvm::errs() << "dude\n";
+  appendLoopExit(B, LoopStmt);
+}
+
 void CFGBuilder::addAutomaticObjHandling(LocalScope::const_iterator B,
                                          LocalScope::const_iterator E,
                                          Stmt *S) {
@@ -1549,11 +1561,15 @@ void CFGBuilder::prependAutomaticObjLifetimeWithTerminator(
     CFGBlock *Blk, LocalScope::const_iterator B, LocalScope::const_iterator E) {
   if (!BuildOpts.AddLifetime)
     return;
+  llvm::errs() << "DudeTerminator\n";
   BumpVectorContext &C = cfg->getBumpVectorContext();
   CFGBlock::iterator InsertPos =
       Blk->beginLifetimeEndsInsert(Blk->end(), B.distance(E), C);
-  for (LocalScope::const_iterator I = B; I != E; ++I)
+  for (LocalScope::const_iterator I = B; I != E; ++I) {
     InsertPos = Blk->insertLifetimeEnds(InsertPos, *I, Blk->getTerminator());
+    Blk->getTerminator()->dump();
+    (*I)->dump();
+  }
 }
 /// Visit - Walk the subtree of a statement and add extra
 ///   blocks for ternary operators, &&, and ||.  We also process "," and
@@ -2557,6 +2573,8 @@ CFGBlock *CFGBuilder::VisitForStmt(ForStmt *F) {
   SaveAndRestore<JumpTarget> save_break(BreakJumpTarget);
   BreakJumpTarget = JumpTarget(LoopSuccessor, ScopePos);
 
+  addLoopExit(LoopSuccessor, F);
+
   CFGBlock *BodyBlock = nullptr, *TransitionBlock = nullptr;
 
   // Now create the loop body.
@@ -2896,6 +2914,8 @@ CFGBlock *CFGBuilder::VisitWhileStmt(WhileStmt *W) {
 
   CFGBlock *BodyBlock = nullptr, *TransitionBlock = nullptr;
 
+  addLoopExit(LoopSuccessor, W);
+
   // Process the loop body.
   {
     assert(W->getBody());
@@ -3053,6 +3073,8 @@ CFGBlock *CFGBuilder::VisitDoStmt(DoStmt *D) {
     LoopSuccessor = Block;
   } else
     LoopSuccessor = Succ;
+
+  addLoopExit(LoopSuccessor,D);
 
   // Because of short-circuit evaluation, the condition of the loop can span
   // multiple basic blocks.  Thus we need the "Entry" and "Exit" blocks that
@@ -4025,6 +4047,7 @@ CFGImplicitDtor::getDestructorDecl(ASTContext &astContext) const {
     case CFGElement::Statement:
     case CFGElement::Initializer:
     case CFGElement::NewAllocator:
+    case CFGElement::LoopExit:
     case CFGElement::LifetimeEnds:
       llvm_unreachable("getDestructorDecl should only be used with "
                        "ImplicitDtors");
@@ -4442,6 +4465,9 @@ static void print_elem(raw_ostream &OS, StmtPrinterHelper &Helper,
 
     OS << " (Lifetime ends)\n";
 
+  } else if (Optional<CFGLoopExit> LE = E.getAs<CFGLoopExit>()) {
+    const Stmt *LoopStmt = LE->getLoopStmt();
+    OS << LoopStmt->getStmtClassName() << " (LoopExit)\n";
   } else if (Optional<CFGNewAllocator> NE = E.getAs<CFGNewAllocator>()) {
     OS << "CFGNewAllocator(";
     if (const CXXNewExpr *AllocExpr = NE->getAllocatorExpr())
