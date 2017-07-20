@@ -38,6 +38,7 @@ void check_forloop1() {
   for (int i = 0; i < 12; i++) {
     i++;
   }
+  
 }
 
 // CHECK:       [B3 (ENTRY)]
@@ -57,6 +58,7 @@ void check_forloop1() {
 void check_forloop2() {
   for (;;)
     ;
+  
 }
 
 // CHECK:       [B4 (ENTRY)]
@@ -83,6 +85,7 @@ void check_while1() {
   while (true) {
     int i;
   }
+  
 }
 
 // CHECK:       [B4 (ENTRY)]
@@ -114,6 +117,7 @@ void check_while2() {
   int l;
   while (l < 42)
     ;
+  
 }
 
 // CHECK:       [B3 (ENTRY)]
@@ -135,6 +139,7 @@ void check_while2() {
 void check_dowhile1() {
   do {
   } while (false);
+  
 }
 
 // CHECK:       [B5 (ENTRY)]
@@ -174,4 +179,5 @@ void check_dowhile2() {
   do {
     j += 2;
   } while (j < 20);
+  
 }
