@@ -1259,7 +1259,7 @@ static QualType getReferenceInitTemporaryType(ASTContext &Context,
 }
 
 
-//TODO: Support adding LoopExit element to the CFG in case where the loop is
+// TODO: Support adding LoopExit element to the CFG in case where the loop is
 // ended by ReturnStmt.
 void CFGBuilder::addLoopExit(CFGBlock* B, const Stmt* LoopStmt){
   if(!BuildOpts.AddLoopExit)
@@ -1563,15 +1563,11 @@ void CFGBuilder::prependAutomaticObjLifetimeWithTerminator(
     CFGBlock *Blk, LocalScope::const_iterator B, LocalScope::const_iterator E) {
   if (!BuildOpts.AddLifetime)
     return;
-  llvm::errs() << "DudeTerminator\n";
   BumpVectorContext &C = cfg->getBumpVectorContext();
   CFGBlock::iterator InsertPos =
       Blk->beginLifetimeEndsInsert(Blk->end(), B.distance(E), C);
-  for (LocalScope::const_iterator I = B; I != E; ++I) {
+  for (LocalScope::const_iterator I = B; I != E; ++I)
     InsertPos = Blk->insertLifetimeEnds(InsertPos, *I, Blk->getTerminator());
-    Blk->getTerminator()->dump();
-    (*I)->dump();
-  }
 }
 /// Visit - Walk the subtree of a statement and add extra
 ///   blocks for ternary operators, &&, and ||.  We also process "," and
