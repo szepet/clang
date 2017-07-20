@@ -46,7 +46,6 @@ ProgramStateRef processLoopEnd(const Stmt *LoopStmt, ProgramStateRef State) {
   auto ULS = State->get<UnrolledLoopStack>();
   assert(LoopStmt == ULS.getHead());
   auto MBVS = State->get<MaxBlockVisitStack>();
-  llvm::errs() << "kivesz: " << MBVS.getHead() <<"\n";
   State = State->set<UnrolledLoopStack>(ULS.getTail());
   State = State->set<MaxBlockVisitStack>(MBVS.getTail());
   return State;
@@ -145,7 +144,6 @@ ProgramStateRef setMaxBlockVisitOnPath(const Stmt *LoopStmt, ASTContext &ASTCtx,
     return State;
 
   if (Matches.empty()) {
-    llvm::errs() << "beletesz: " << DefaultVal << "\n";
     State = State->add<MaxBlockVisitStack>(llvm::APInt(8, DefaultVal));
     State = State->add<UnrolledLoopStack>(LoopStmt);
     return State;
@@ -167,19 +165,14 @@ ProgramStateRef setMaxBlockVisitOnPath(const Stmt *LoopStmt, ASTContext &ASTCtx,
 
   Diff *= OuterVisitNum;
   State = State->add<MaxBlockVisitStack>(Diff.abs());
-  llvm::errs() << "beletesz: " << Diff << "\n";
   State = State->add<UnrolledLoopStack>(LoopStmt);
   return State;
 }
 
 unsigned getMaxBlockVisitOnPath(ProgramStateRef State) {
   auto MBVS = State->get<MaxBlockVisitStack>();
-  if (MBVS.isEmpty()) {
-    llvm::errs() << "visszaad: 0\n";
+  if (MBVS.isEmpty())
     return 0;
-  }
-  llvm::errs() << "visszaad: "
-               << (unsigned)MBVS.getHead().getLimitedValue(UINT_MAX) << "\n";
   return MBVS.getHead().getLimitedValue(UINT_MAX);
 }
 }
