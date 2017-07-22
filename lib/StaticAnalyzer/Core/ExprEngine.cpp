@@ -362,8 +362,10 @@ void ExprEngine::processCFGElement(const CFGElement E, ExplodedNode *Pred,
     case CFGElement::TemporaryDtor:
       ProcessImplicitDtor(E.castAs<CFGImplicitDtor>(), Pred);
       return;
-    case CFGElement::LifetimeEnds:
     case CFGElement::LoopExit:
+      ProcessLoopExit(E.castAs<CFGLoopExit>().getLoopStmt(), Pred);
+      return;
+    case CFGElement::LifetimeEnds:
       return;
   }
 }
@@ -505,6 +507,22 @@ void ExprEngine::ProcessStmt(const CFGStmt S,
   }
 
   // Enqueue the new nodes onto the work list.
+  Engine.enqueue(Dst, currBldrCtx->getBlock(), currStmtIdx);
+}
+
+void ExprEngine::ProcessLoopExit(const Stmt* S, ExplodedNode *Pred) {
+  PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),
+                                S->getLocStart(),
+                                "Error evaluating end of the loop");
+  ExplodedNodeSet Dst;
+  Dst.Add(Pred);
+  NodeBuilder Bldr(Pred, Dst, *currBldrCtx);
+
+  LoopExit PP(S, Pred->getLocationContext());
+  Bldr.generateNode(PP, Pred->getState(), Pred);
+
+  // Enqueue the new nodes onto the work list.
+  llvm::errs() << Pred->getLocation().getKind() << "\n";
   Engine.enqueue(Dst, currBldrCtx->getBlock(), currStmtIdx);
 }
 
@@ -2666,6 +2684,12 @@ struct DOTGraphTraits<ExplodedNode*> :
       case ProgramPoint::EpsilonKind:
         Out << "Epsilon Point";
         break;
+
+      case ProgramPoint::LoopExitKind: {
+        LoopExit LE = Loc.castAs<LoopExit>();
+        Out << "LoopExit: " << LE.getLoopStmt()->getStmtClassName();
+        break;
+      }
 
       case ProgramPoint::PreImplicitCallKind: {
         ImplicitCallPoint PC = Loc.castAs<ImplicitCallPoint>();
