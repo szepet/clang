@@ -1520,12 +1520,6 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
       return;
   }
 
-    if (isUnrolledLoopBlock(ActualBlock, Pred,AMgr))
-      return;
-    if (ActualBlock->empty())
-      return;
-  }
-
   // If this block is terminated by a loop and it has already been visited the
   // maximum number of times, widen the loop.
   unsigned int BlockCount = nodeBuilder.getContext().blockCount();
@@ -1692,6 +1686,7 @@ void ExprEngine::processBranch(const Stmt *Condition, const Stmt *Term,
   const LocationContext *LCtx = Pred->getLocationContext();
   PrettyStackTraceLocationContext StackCrashInfo(LCtx);
   currBldrCtx = &BldCtx;
+
   // Check for NULL conditions; e.g. "for(;;)"
   if (!Condition) {
     BranchNodeBuilder NullCondBldr(Pred, Dst, BldCtx, DstT, DstF);

@@ -1,4 +1,3 @@
-// REQUIRES: asserts
 // RUN: %clang_analyze_cc1 -analyzer-checker=core,debug.ExprInspection -analyzer-config unroll-loops=true -analyzer-stats -verify -std=c++11 %s
 
 void clang_analyzer_numTimesReached();
