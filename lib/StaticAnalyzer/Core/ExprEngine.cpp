@@ -17,6 +17,7 @@
 #include "PrettyStackTraceLocationContext.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/ParentMap.h"
+#include "clang/Analysis/CFGStmtMap.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/Basic/Builtins.h"
@@ -27,6 +28,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/AnalysisManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/LoopWidening.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/LoopUnrolling.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/raw_ostream.h"
@@ -517,12 +519,16 @@ void ExprEngine::ProcessLoopExit(const Stmt* S, ExplodedNode *Pred) {
   ExplodedNodeSet Dst;
   Dst.Add(Pred);
   NodeBuilder Bldr(Pred, Dst, *currBldrCtx);
+  ProgramStateRef NewState = Pred->getState();
+  if(AMgr.options.shouldUnrollLoops()){
+    NewState = processLoopEnd(S, NewState);
+  }
 
   LoopExit PP(S, Pred->getLocationContext());
-  Bldr.generateNode(PP, Pred->getState(), Pred);
+  Bldr.generateNode(PP, NewState, Pred);
+
 
   // Enqueue the new nodes onto the work list.
-  llvm::errs() << Pred->getLocation().getKind() << "\n";
   Engine.enqueue(Dst, currBldrCtx->getBlock(), currStmtIdx);
 }
 
@@ -1516,11 +1522,28 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
+  // If we reach a loop which has a known bound (and meets
+  // other constraints) then consider completely unrolling it.
+  unsigned maxBlockVisitOnPath = AMgr.options.maxBlockVisitOnPath;
+  if (AMgr.options.shouldUnrollLoops()) {
+    
+    const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
+    if (Term) {
+      ProgramStateRef NewState = setMaxBlockVisitOnPath(Term, AMgr.getASTContext(),Pred->getState(), maxBlockVisitOnPath);
+      if (NewState != Pred->getState()){
+        Pred = nodeBuilder.generateNode(NewState, Pred);
+      }
+    }
+    auto isUnrolledLoop = getMaxBlockVisitOnPath(Pred->getState());
+    if(isUnrolledLoop > 0)
+      return;
+
+  }
 
   // If this block is terminated by a loop and it has already been visited the
   // maximum number of times, widen the loop.
   unsigned int BlockCount = nodeBuilder.getContext().blockCount();
-  if (BlockCount == AMgr.options.maxBlockVisitOnPath - 1 &&
+  if (BlockCount == maxBlockVisitOnPath - 1 &&
       AMgr.options.shouldWidenLoops()) {
     const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
     if (!(Term &&
@@ -1535,7 +1558,7 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
   }
 
   // FIXME: Refactor this into a checker.
-  if (BlockCount >= AMgr.options.maxBlockVisitOnPath) {
+  if (BlockCount >= maxBlockVisitOnPath) {
     static SimpleProgramPointTag tag(TagProviderName, "Block count exceeded");
     const ExplodedNode *Sink =
                    nodeBuilder.generateSink(Pred->getState(), Pred, &tag);
@@ -1683,7 +1706,6 @@ void ExprEngine::processBranch(const Stmt *Condition, const Stmt *Term,
   const LocationContext *LCtx = Pred->getLocationContext();
   PrettyStackTraceLocationContext StackCrashInfo(LCtx);
   currBldrCtx = &BldCtx;
-
   // Check for NULL conditions; e.g. "for(;;)"
   if (!Condition) {
     BranchNodeBuilder NullCondBldr(Pred, Dst, BldCtx, DstT, DstF);
