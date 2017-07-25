@@ -42,6 +42,17 @@ static bool isLoopStmt(const Stmt *S) {
   return S && (isa<ForStmt>(S) || isa<WhileStmt>(S) || isa<DoStmt>(S));
 }
 
+
+enum EqualityType{EqualsNodeByName, EqualsNodeByPointer};
+
+static internal::Matcher<Decl> equalsNode(llvm::PointerUnion<const Decl*, const char*> PU, EqualityType E = EqualsNodeByPointer){
+  if(E == EqualsNodeByPointer)
+  return clang::ast_matchers::equalsNode(PU.get<const  Decl*>());
+  else if(E == EqualsNodeByName)
+  return equalsBoundNode(PU.get<const char*>());
+  llvm_unreachable("unknown EqualityType");
+}
+
 static internal::Matcher<Stmt> simpleCondition(StringRef BindName) {
   return binaryOperator(
       anyOf(hasOperatorName("<"), hasOperatorName(">"), hasOperatorName("<="),
@@ -64,9 +75,9 @@ static internal::Matcher<Stmt> changeIntBoundNode(StringRef NodeName) {
                        declRefExpr(to(varDecl(equalsBoundNode(NodeName)))))))));
 }
 
-static internal::Matcher<Stmt> callByRef(StringRef NodeName) {
+static internal::Matcher<Stmt> callByRef(llvm::PointerUnion<const Decl*, const char*> PU, EqualityType E = EqualsNodeByPointer) {
   return hasDescendant(callExpr(forEachArgumentWithParam(
-      declRefExpr(to(varDecl(equalsBoundNode(NodeName)))),
+      declRefExpr(to(varDecl(equalsNode(PU,E)))),
       parmVarDecl(hasType(references(qualType(unless(isConstQualified()))))))));
 }
 
