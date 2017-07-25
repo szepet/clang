@@ -43,11 +43,11 @@ static bool isLoopStmt(const Stmt *S) {
 }
 
 
-static internal::Matcher<Decl> equalsNode(llvm::PointerUnion<const Decl*, const char*> PU){
+static internal::Matcher<Decl> equalsNode(llvm::PointerUnion<const Decl*, const std::string*> PU){
   if(PU.is<const Decl*>())
   return clang::ast_matchers::equalsNode(PU.get<const Decl*>());
-  else if(PU.is<const char*>())
-  return equalsBoundNode(PU.get<const char*>());
+  else if(PU.is<const std::string*>())
+  return equalsBoundNode(*PU.get<const std::string*>());
   llvm_unreachable("PU should contain a valid pointer");
 }
 
@@ -73,13 +73,13 @@ static internal::Matcher<Stmt> changeIntBoundNode(StringRef NodeName) {
                        declRefExpr(to(varDecl(equalsBoundNode(NodeName)))))))));
 }
 
-static internal::Matcher<Stmt> callByRef(llvm::PointerUnion<const Decl*, const char*> PU) {
+static internal::Matcher<Stmt> callByRef(llvm::PointerUnion<const Decl*, const std::string*> PU) {
   return hasDescendant(callExpr(forEachArgumentWithParam(
       declRefExpr(to(varDecl(equalsNode(PU)))),
       parmVarDecl(hasType(references(qualType(unless(isConstQualified()))))))));
 }
 
-static internal::Matcher<Stmt> assignedToRef(llvm::PointerUnion<const Decl*, const char*> PU) {
+static internal::Matcher<Stmt> assignedToRef(llvm::PointerUnion<const Decl*, const std::string*> PU) {
   return hasDescendant(varDecl(
       allOf(hasType(referenceType()),
             hasInitializer(
@@ -88,13 +88,13 @@ static internal::Matcher<Stmt> assignedToRef(llvm::PointerUnion<const Decl*, con
                       declRefExpr(to(varDecl(equalsNode(PU)))))))));
 }
 
-static internal::Matcher<Stmt> getAddrTo(llvm::PointerUnion<const Decl*, const char*> PU) {
+static internal::Matcher<Stmt> getAddrTo(llvm::PointerUnion<const Decl*, const std::string*> PU) {
   return hasDescendant(unaryOperator(
       hasOperatorName("&"),
       hasUnaryOperand(declRefExpr(hasDeclaration(equalsNode(PU))))));
 }
 
-static internal::Matcher<Stmt> hasSuspiciousStmt(const char* NodeName) {
+static internal::Matcher<Stmt> hasSuspiciousStmt(const std::string* NodeName) {
   return anyOf(hasDescendant(gotoStmt()), hasDescendant(switchStmt()),
                // Escaping and not known mutation of the loop counter is handled
                // by exclusion of assigning and address-of operators and
@@ -221,7 +221,7 @@ bool isUnrolledLoopBlock(const CFGBlock *Block, ExplodedNode *Pred,
     LBV.setBlocksOfLoop(E.first, M);
     // In case of an inlined function call check if any of its callSiteBlock is
     // marked.
-    while (SearchedBlock && BlockSet.find(SearchedBlock) == BlockSet.end()) {
+    while (SearchedBlock && BlockSet.find(SearchedBlock) == BlockSet.end() && !StackFrame->inTopFrame()) {
       SearchedBlock = StackFrame->getCallSiteBlock();
       StackFrame = StackFrame->getParent()->getCurrentStackFrame();
     }
