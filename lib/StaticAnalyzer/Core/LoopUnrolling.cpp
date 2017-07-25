@@ -43,14 +43,12 @@ static bool isLoopStmt(const Stmt *S) {
 }
 
 
-enum EqualityType{EqualsNodeByName, EqualsNodeByPointer};
-
-static internal::Matcher<Decl> equalsNode(llvm::PointerUnion<const Decl*, const char*> PU, EqualityType E = EqualsNodeByPointer){
-  if(E == EqualsNodeByPointer)
-  return clang::ast_matchers::equalsNode(PU.get<const  Decl*>());
-  else if(E == EqualsNodeByName)
+static internal::Matcher<Decl> equalsNode(llvm::PointerUnion<const Decl*, const char*> PU){
+  if(PU.is<const Decl*>())
+  return clang::ast_matchers::equalsNode(PU.get<const Decl*>());
+  else if(PU.is<const char*>())
   return equalsBoundNode(PU.get<const char*>());
-  llvm_unreachable("unknown EqualityType");
+  llvm_unreachable("PU should contain a valid pointer");
 }
 
 static internal::Matcher<Stmt> simpleCondition(StringRef BindName) {
@@ -75,28 +73,28 @@ static internal::Matcher<Stmt> changeIntBoundNode(StringRef NodeName) {
                        declRefExpr(to(varDecl(equalsBoundNode(NodeName)))))))));
 }
 
-static internal::Matcher<Stmt> callByRef(llvm::PointerUnion<const Decl*, const char*> PU, EqualityType E = EqualsNodeByPointer) {
+static internal::Matcher<Stmt> callByRef(llvm::PointerUnion<const Decl*, const char*> PU) {
   return hasDescendant(callExpr(forEachArgumentWithParam(
-      declRefExpr(to(varDecl(equalsNode(PU,E)))),
+      declRefExpr(to(varDecl(equalsNode(PU)))),
       parmVarDecl(hasType(references(qualType(unless(isConstQualified()))))))));
 }
 
-static internal::Matcher<Stmt> assignedToRef(StringRef NodeName) {
+static internal::Matcher<Stmt> assignedToRef(llvm::PointerUnion<const Decl*, const char*> PU) {
   return hasDescendant(varDecl(
       allOf(hasType(referenceType()),
             hasInitializer(
                 anyOf(initListExpr(has(
-                          declRefExpr(to(varDecl(equalsBoundNode(NodeName)))))),
-                      declRefExpr(to(varDecl(equalsBoundNode(NodeName)))))))));
+                          declRefExpr(to(varDecl(equalsNode(PU)))))),
+                      declRefExpr(to(varDecl(equalsNode(PU)))))))));
 }
 
-static internal::Matcher<Stmt> getAddrTo(StringRef NodeName) {
+static internal::Matcher<Stmt> getAddrTo(llvm::PointerUnion<const Decl*, const char*> PU) {
   return hasDescendant(unaryOperator(
       hasOperatorName("&"),
-      hasUnaryOperand(declRefExpr(hasDeclaration(equalsBoundNode(NodeName))))));
+      hasUnaryOperand(declRefExpr(hasDeclaration(equalsNode(PU))))));
 }
 
-static internal::Matcher<Stmt> hasSuspiciousStmt(StringRef NodeName) {
+static internal::Matcher<Stmt> hasSuspiciousStmt(const char* NodeName) {
   return anyOf(hasDescendant(gotoStmt()), hasDescendant(switchStmt()),
                // Escaping and not known mutation of the loop counter is handled
                // by exclusion of assigning and address-of operators and
@@ -170,6 +168,35 @@ private:
   const Stmt *LoopStmt;
 };
 }
+
+static bool isPossiblyEscaped(const VarDecl *VD, ExplodedNode *N) {
+  ExplodedNode* Node = N;
+  while (!Node->pred_empty()) {
+    const Stmt *S = PathDiagnosticLocation::getStmt(N);
+    if (!S) {
+      Node = Node->getFirstPred();
+      continue;
+    }
+    // Once we reach the declaration of the VD we can return.
+    if (const DeclStmt *DS = dyn_cast<DeclStmt>(S)) {
+      for (const Decl *D : DS->decls()) {
+        if (D->getCanonicalDecl() == VD)
+          return false;
+      }
+    }
+
+    // Check the usage of the adress-of operator on VD.
+    auto Match =
+            match(anyOf(callByRef(VD), getAddrTo(VD), assignedToRef(VD)), *S,
+                  N->getLocationContext()->getAnalysisDeclContext()->getASTContext());
+    if (!Match.empty())
+      return true;
+    Node = Node->getFirstPred();
+  }
+  llvm_unreachable("Reached root without finding the declaration of VD.");
+}
+
+
 // TODO: refactor this function using LoopExit CFG element - once we have the
 // information when the simulation reaches the end of the loop we can cleanup
 // the state
