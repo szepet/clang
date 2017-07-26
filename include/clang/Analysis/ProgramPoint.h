@@ -83,6 +83,7 @@ public:
               PostImplicitCallKind,
               MinImplicitCallKind = PreImplicitCallKind,
               MaxImplicitCallKind = PostImplicitCallKind,
+              LoopExitKind,
               EpsilonKind};
 
 private:
@@ -652,6 +653,23 @@ private:
   static bool isKind(const ProgramPoint &Location) {
     return Location.getKind() == CallExitEndKind;
   }
+};
+
+class LoopExit : public ProgramPoint {
+public:
+    LoopExit(const Stmt *LoopStmt, const LocationContext *LC)
+            : ProgramPoint(LoopStmt, nullptr, LoopExitKind, LC) {}
+
+    const Stmt *getLoopStmt() const {
+      return static_cast<const Stmt *>(getData1());
+    }
+
+private:
+    LoopExit() {}
+    friend class ProgramPoint;
+    static bool isKind(const ProgramPoint &Location) {
+      return Location.getKind() == LoopExitKind;
+    }
 };
 
 /// This is a meta program point, which should be skipped by all the diagnostic
