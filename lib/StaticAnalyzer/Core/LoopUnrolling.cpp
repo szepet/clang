@@ -27,19 +27,25 @@ using namespace clang;
 using namespace ento;
 using namespace clang::ast_matchers;
 
-#define DEBUG_TYPE "LoopUnrolling"
-
-STATISTIC(NumTimesLoopUnrolled,
-          "The # of times a loop has got completely unrolled");
-
-REGISTER_MAP_WITH_PROGRAMSTATE(UnrolledLoops, const Stmt *,
-                               const FunctionDecl *)
+REGISTER_LIST_WITH_PROGRAMSTATE(MaxBlockVisitStack, const llvm::APInt)
+REGISTER_LIST_WITH_PROGRAMSTATE(UnrolledLoopStack, const Stmt *)
 
 namespace clang {
 namespace ento {
 
 static bool isLoopStmt(const Stmt *S) {
   return S && (isa<ForStmt>(S) || isa<WhileStmt>(S) || isa<DoStmt>(S));
+}
+
+ProgramStateRef processLoopEnd(const Stmt *LoopStmt, ProgramStateRef State) {
+  auto ULS = State->get<UnrolledLoopStack>();
+  auto MBVS = State->get<MaxBlockVisitStack>();
+
+  assert(LoopStmt == ULS.getHead() && "Loop not added to the stack.");
+
+  State = State->set<UnrolledLoopStack>(ULS.getTail());
+  State = State->set<MaxBlockVisitStack>(MBVS.getTail());
+  return State;
 }
 
 static internal::Matcher<Stmt> simpleCondition(StringRef BindName) {
@@ -127,83 +133,31 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
   return !Matches.empty();
 }
 
-namespace {
-class LoopBlockVisitor : public ConstStmtVisitor<LoopBlockVisitor> {
-public:
-  LoopBlockVisitor(llvm::SmallPtrSet<const CFGBlock *, 8> &BS) : BlockSet(BS) {}
-
-  void VisitChildren(const Stmt *S) {
-    for (const Stmt *Child : S->children())
-      if (Child)
-        Visit(Child);
-  }
-
-  void VisitStmt(const Stmt *S) {
-    // In case of nested loops we only unroll the inner loop if it's marked too.
-    if (!S || (isLoopStmt(S) && S != LoopStmt))
-      return;
-    BlockSet.insert(StmtToBlockMap->getBlock(S));
-    VisitChildren(S);
-  }
-
-  void setBlocksOfLoop(const Stmt *Loop, const CFGStmtMap *M) {
-    BlockSet.clear();
-    StmtToBlockMap = M;
-    LoopStmt = Loop;
-    Visit(LoopStmt);
-  }
-
-private:
-  llvm::SmallPtrSet<const CFGBlock *, 8> &BlockSet;
-  const CFGStmtMap *StmtToBlockMap;
-  const Stmt *LoopStmt;
-};
-}
-// TODO: refactor this function using LoopExit CFG element - once we have the
-// information when the simulation reaches the end of the loop we can cleanup
-// the state
-bool isUnrolledLoopBlock(const CFGBlock *Block, ExplodedNode *Pred,
-                         AnalysisManager &AMgr) {
-  const Stmt *Term = Block->getTerminator();
-  auto State = Pred->getState();
-  // In case of nested loops in an inlined function should not be unrolled only
-  // if the inner loop is marked.
-  if (Term && isLoopStmt(Term) && !State->contains<UnrolledLoops>(Term))
-    return false;
-
-  const CFGBlock *SearchedBlock;
-  llvm::SmallPtrSet<const CFGBlock *, 8> BlockSet;
-  LoopBlockVisitor LBV(BlockSet);
-  // Check the CFGBlocks of every marked loop.
-  for (auto &E : State->get<UnrolledLoops>()) {
-    SearchedBlock = Block;
-    const StackFrameContext *StackFrame = Pred->getStackFrame();
-    ParentMap PM(E.second->getBody());
-    CFGStmtMap *M = CFGStmtMap::Build(AMgr.getCFG(E.second), &PM);
-    LBV.setBlocksOfLoop(E.first, M);
-    // In case of an inlined function call check if any of its callSiteBlock is
-    // marked.
-    while (BlockSet.find(SearchedBlock) == BlockSet.end() && StackFrame) {
-      SearchedBlock = StackFrame->getCallSiteBlock();
-      if(!SearchedBlock || StackFrame->inTopFrame())
-        break;
-      StackFrame = StackFrame->getParent()->getCurrentStackFrame();
-    }
-    delete M;
-    if (SearchedBlock)
-      return true;
-  }
-  return false;
-}
-
-ProgramStateRef markLoopAsUnrolled(const Stmt *Term, ProgramStateRef State,
-                                   const FunctionDecl *FD) {
-  if (State->contains<UnrolledLoops>(Term))
+ProgramStateRef updateUnrolledLoops(const Stmt *LoopStmt, ASTContext &ASTCtx,
+                                    ProgramStateRef State){
+  if (!isLoopStmt(LoopStmt))
     return State;
 
-  State = State->set<UnrolledLoops>(Term, FD);
-  ++NumTimesLoopUnrolled;
+  auto ULS = State->get<UnrolledLoopStack>();
+  if (!ULS.isEmpty() && LoopStmt == ULS.getHead())
+    return State;
+
+  if(!shouldCompletelyUnroll(LoopStmt, ASTCtx)){
+    State = State->add<MaxBlockVisitStack>(llvm::APInt(1, 0));
+    State = State->add<UnrolledLoopStack>(LoopStmt);
+    return State;
+  }
+
+  State = State->add<MaxBlockVisitStack>(llvm::APInt(1, 1));
+  State = State->add<UnrolledLoopStack>(LoopStmt);
   return State;
+}
+
+bool isUnrolledState(ProgramStateRef State) {
+  auto MBVS = State->get<MaxBlockVisitStack>();
+  if (MBVS.isEmpty() or MBVS.getHead() == 0 )
+    return false;
+  return true;
 }
 }
 }

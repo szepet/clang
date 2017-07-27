@@ -24,11 +24,10 @@ namespace clang {
 namespace ento {
 class AnalysisManager;
 
-ProgramStateRef markLoopAsUnrolled(const Stmt *Term, ProgramStateRef State,
-                                   const FunctionDecl *FD);
-bool isUnrolledLoopBlock(const CFGBlock *Block, ExplodedNode *Pred,
-                         AnalysisManager &AMgr);
-bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx);
+bool isUnrolledState(ProgramStateRef State);
+ProgramStateRef updateUnrolledLoops(const Stmt *LoopStmt, ASTContext &ASTCtx,
+                                       ProgramStateRef State);
+ProgramStateRef processLoopEnd(const Stmt *LoopStmt, ProgramStateRef State);
 
 } // end namespace ento
 } // end namespace clang
