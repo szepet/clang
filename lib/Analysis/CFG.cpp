@@ -602,7 +602,7 @@ private:
     return Visit(S, AddStmtChoice::AlwaysAdd);
   }
   CFGBlock *addInitializer(CXXCtorInitializer *I);
-  void addLoopExit(const Stmt* LoopStmt);
+  void addLoopExit(const Stmt *LoopStmt);
   void addAutomaticObjDtors(LocalScope::const_iterator B,
                             LocalScope::const_iterator E, Stmt *S);
   void addLifetimeEnds(LocalScope::const_iterator B,
@@ -653,8 +653,8 @@ private:
     B->appendLifetimeEnds(VD, S, cfg->getBumpVectorContext());
   }
 
-  void appendLoopExit(CFGBlock *B, const Stmt *S) {
-    B->appendLoopExit(S, cfg->getBumpVectorContext());
+  void appendLoopExit(CFGBlock *B, const Stmt *LoopStmt) {
+    B->appendLoopExit(LoopStmt, cfg->getBumpVectorContext());
   }
 
   void appendDeleteDtor(CFGBlock *B, CXXRecordDecl *RD, CXXDeleteExpr *DE) {
@@ -1259,9 +1259,9 @@ static QualType getReferenceInitTemporaryType(ASTContext &Context,
 }
 
 
-//TODO: Support adding LoopExit element to the CFG in case where the loop is
-// ended by ReturnStmt.
-void CFGBuilder::addLoopExit(const Stmt* LoopStmt){
+// TODO: Support adding LoopExit element to the CFG in case where the loop is
+// ended by ReturnStmt, GotoStmt or ThrowExpr.
+void CFGBuilder::addLoopExit(const Stmt *LoopStmt){
   if(!BuildOpts.AddLoopExit)
     return;
   autoCreateBlock();
