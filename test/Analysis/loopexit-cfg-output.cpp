@@ -139,6 +139,31 @@ void check_while2() {
 }
 
 // CHECK:       [B4 (ENTRY)]
+// CHECK-NEXT:   Succs (1): B3
+
+// CHECK:       [B1]
+// CHECK-NEXT:   1: WhileStmt (LoopExit)
+// CHECK-NEXT:   Preds (1): B3
+// CHECK-NEXT:   Succs (1): B0
+
+// CHECK:       [B2]
+// CHECK-NEXT:   Succs (1): B3
+
+// CHECK:       [B3]
+// CHECK-NEXT:   1: false
+// CHECK-NEXT:   T: while [B3.1]
+// CHECK-NEXT:   Preds (2): B2 B4
+// CHECK-NEXT:   Succs (2): NULL B1
+
+// CHECK:       [B0 (EXIT)]
+// CHECK-NEXT:   Preds (1): B1
+void check_while3() {
+  while (false) {
+    ;
+  }
+}
+
+// CHECK:       [B4 (ENTRY)]
 // CHECK-NEXT:   Succs (1): B2
 
 // CHECK:       [B1]
@@ -348,4 +373,104 @@ void nested_loops2() {
     } while (i < 2);
     i--;
   }
+}
+
+// CHECK:       [B12 (ENTRY)]
+// CHECK-NEXT:   Succs (1): B11
+
+// CHECK:       [B1]
+// CHECK-NEXT:   1: WhileStmt (LoopExit)
+// CHECK-NEXT:   2: return;
+// CHECK-NEXT:   Preds (2): B3 B5
+// CHECK-NEXT:   Succs (1): B0
+
+// CHECK:       [B2]
+// CHECK-NEXT:   Preds (1): B4
+// CHECK-NEXT:   Succs (1): B5
+
+// CHECK:       [B3]
+// CHECK-NEXT:   T: break;
+// CHECK-NEXT:   Preds (1): B4
+// CHECK-NEXT:   Succs (1): B1
+
+// CHECK:       [B4]
+// CHECK-NEXT:   1: i
+// CHECK-NEXT:   2: [B4.1]++
+// CHECK-NEXT:   3: i
+// CHECK-NEXT:   4: [B4.3] (ImplicitCastExpr, LValueToRValue, int)
+// CHECK-NEXT:   5: 2
+// CHECK-NEXT:   6: [B4.4] % [B4.5]
+// CHECK-NEXT:   7: [B4.6] (ImplicitCastExpr, IntegralToBoolean, _Bool)
+// CHECK-NEXT:   T: if [B4.7]
+// CHECK-NEXT:   Preds (1): B5
+// CHECK-NEXT:   Succs (2): B3 B2
+
+// CHECK:       [B5]
+// CHECK-NEXT:   1: i
+// CHECK-NEXT:   2: [B5.1] (ImplicitCastExpr, LValueToRValue, int)
+// CHECK-NEXT:   3: 5
+// CHECK-NEXT:   4: [B5.2] < [B5.3]
+// CHECK-NEXT:   T: while [B5.4]
+// CHECK-NEXT:   Preds (2): B2 B6
+// CHECK-NEXT:   Succs (2): B4 B1
+
+// CHECK:       [B6]
+// CHECK-NEXT:   1: ForStmt (LoopExit)
+// CHECK-NEXT:   2: 1
+// CHECK-NEXT:   3: int i = 1;
+// CHECK-NEXT:   Preds (2): B8 B10
+// CHECK-NEXT:   Succs (1): B5
+
+// CHECK:       [B7]
+// CHECK-NEXT:   1: i
+// CHECK-NEXT:   2: [B7.1]++
+// CHECK-NEXT:   Preds (1): B9
+// CHECK-NEXT:   Succs (1): B10
+
+// CHECK:       [B8]
+// CHECK-NEXT:   T: break;
+// CHECK-NEXT:   Preds (1): B9
+// CHECK-NEXT:   Succs (1): B6
+
+// CHECK:       [B9]
+// CHECK-NEXT:   1: i
+// CHECK-NEXT:   2: [B9.1] (ImplicitCastExpr, LValueToRValue, int)
+// CHECK-NEXT:   3: 4
+// CHECK-NEXT:   4: [B9.2] == [B9.3]
+// CHECK-NEXT:   T: if [B9.4]
+// CHECK-NEXT:   Preds (1): B10
+// CHECK-NEXT:   Succs (2): B8 B7
+
+// CHECK:       [B10]
+// CHECK-NEXT:   1: i
+// CHECK-NEXT:   2: [B10.1] (ImplicitCastExpr, LValueToRValue, int)
+// CHECK-NEXT:   3: 6
+// CHECK-NEXT:   4: [B10.2] < [B10.3]
+// CHECK-NEXT:   T: for (...; [B10.4]; ...)
+// CHECK-NEXT:   Preds (2): B7 B11
+// CHECK-NEXT:   Succs (2): B9 B6
+
+// CHECK:       [B11]
+// CHECK-NEXT:   1: 2
+// CHECK-NEXT:   2: int i = 2;
+// CHECK-NEXT:   Preds (1): B12
+// CHECK-NEXT:   Succs (1): B10
+
+// CHECK:       [B0 (EXIT)]
+// CHECK-NEXT:   Preds (1): B1
+void check_break()
+{
+  for(int i = 2; i < 6; i++) {
+    if(i == 4)
+      break;
+  }
+
+  int i = 1;
+  while(i<5){
+    i++;
+    if(i%2)
+      break;
+  }
+  
+  return;
 }
