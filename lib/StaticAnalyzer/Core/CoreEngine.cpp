@@ -583,11 +583,6 @@ void CoreEngine::enqueueStmtNode(ExplodedNode *N,
     return;
   }
 
-  if ((*Block)[Idx].getKind() == CFGElement::LoopExit) {
-    WList->enqueue(N, Block, Idx+1);
-    return;
-  }
-
   // At this point, we know we're processing a normal statement.
   CFGStmt CS = (*Block)[Idx].castAs<CFGStmt>();
   PostStmt Loc(CS.getStmt(), N->getLocationContext());

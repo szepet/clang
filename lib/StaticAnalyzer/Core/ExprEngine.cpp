@@ -402,7 +402,7 @@ static bool shouldRemoveDeadBindings(AnalysisManager &AMgr,
 void ExprEngine::removeDead(ExplodedNode *Pred, ExplodedNodeSet &Out,
                             const Stmt *ReferenceStmt,
                             const LocationContext *LC,
-                            const Stmt *DiagnosticStmt,
+                            con   st Stmt *DiagnosticStmt,
                             ProgramPoint::Kind K) {
   assert((K == ProgramPoint::PreStmtPurgeDeadSymbolsKind ||
           ReferenceStmt == nullptr || isa<ReturnStmt>(ReferenceStmt))
