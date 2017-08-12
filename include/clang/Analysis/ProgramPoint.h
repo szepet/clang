@@ -655,6 +655,7 @@ private:
   }
 };
 
+/// Represents a point when we exit a loop.
 class LoopExit : public ProgramPoint {
 public:
     LoopExit(const Stmt *LoopStmt, const LocationContext *LC)
@@ -665,8 +666,8 @@ public:
     }
 
 private:
-    LoopExit() {}
     friend class ProgramPoint;
+    LoopExit() {}
     static bool isKind(const ProgramPoint &Location) {
       return Location.getKind() == LoopExitKind;
     }
