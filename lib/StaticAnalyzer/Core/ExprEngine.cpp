@@ -402,7 +402,7 @@ static bool shouldRemoveDeadBindings(AnalysisManager &AMgr,
 void ExprEngine::removeDead(ExplodedNode *Pred, ExplodedNodeSet &Out,
                             const Stmt *ReferenceStmt,
                             const LocationContext *LC,
-                            con   st Stmt *DiagnosticStmt,
+                            const Stmt *DiagnosticStmt,
                             ProgramPoint::Kind K) {
   assert((K == ProgramPoint::PreStmtPurgeDeadSymbolsKind ||
           ReferenceStmt == nullptr || isa<ReturnStmt>(ReferenceStmt))
@@ -1525,11 +1525,14 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
   if(AMgr.options.shouldUnrollLoops()) {
     const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
     if (Term) {
-      ProgramStateRef NewState = updateUnrolledLoops(Term, AMgr.getASTContext(), Pred->getState());
+      ProgramStateRef NewState = updateLoopStack(Term, AMgr.getASTContext(),
+                                                 Pred->getState(),
+                                                 Pred->getLocationContext());
       if (NewState != Pred->getState()){
         Pred = nodeBuilder.generateNode(NewState, Pred);
       }
     }
+    // Is we are inside an unrolled loop then no need the check the counters.
     if(isUnrolledState(Pred->getState()))
       return;
   }

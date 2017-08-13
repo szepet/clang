@@ -8,8 +8,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// This file contains functions which are used to decide if a loop worth to be
-/// unrolled. Moreover contains function which mark the CFGBlocks which belongs
-/// to the unrolled loop and store them in ProgramState.
+/// unrolled. Moreover, these functions manages the stack of loop which is
+/// tracked by the ProgramState.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -27,24 +27,66 @@ using namespace clang;
 using namespace ento;
 using namespace clang::ast_matchers;
 
-REGISTER_LIST_WITH_PROGRAMSTATE(MaxBlockVisitStack, const llvm::APInt)
-REGISTER_LIST_WITH_PROGRAMSTATE(UnrolledLoopStack, const Stmt *)
+struct LoopState {
+private:
+  enum Kind { Normal, Unrolled } K;
+  const Stmt *LoopStmt;
+  const LocationContext *LCtx;
+  LoopState(Kind InK, const Stmt *S, const LocationContext *L)
+      : K(InK), LoopStmt(S), LCtx(L) {}
+
+public:
+  static LoopState getNormal(const Stmt *S, const LocationContext *L) {
+    return LoopState(Normal, S, L);
+  }
+  static LoopState getUnrolled(const Stmt *S, const LocationContext *L) {
+    return LoopState(Unrolled, S, L);
+  }
+  bool isUnrolled() const { return K == Unrolled; }
+  const Stmt *getLoopStmt() const { return LoopStmt; }
+  const LocationContext *getLocationContext() const { return LCtx; }
+  bool operator==(const LoopState &X) const {
+    return K == X.K && LoopStmt == X.LoopStmt;
+  }
+  void Profile(llvm::FoldingSetNodeID &ID) const {
+    ID.AddInteger(K);
+    ID.AddPointer(LoopStmt);
+  }
+};
+
+// The tracked stack of loops. The stack indicates that which loops the
+// simulated element contained by. The loops are marked depending if we decided
+// to unroll them.
+// TODO: The loop stack should not need to be in the program state since it is
+// lexical in nature. Instead, the stack of loops should be tracked in the
+// LocationContext.
+REGISTER_LIST_WITH_PROGRAMSTATE(LoopStack, LoopState)
 
 namespace clang {
 namespace ento {
+
+static void printLoopStack(ProgramStateRef State) {
+  auto LS = State->get<LoopStack>();
+  llvm::errs() << "LoopStack:\n";
+  for (auto &E : LS) {
+    llvm::errs() << E.getLoopStmt() << " " << E.isUnrolled() << " "
+                 << E.getLocationContext() << "\n";
+  }
+  llvm::errs() << "\n";
+  return;
+}
 
 static bool isLoopStmt(const Stmt *S) {
   return S && (isa<ForStmt>(S) || isa<WhileStmt>(S) || isa<DoStmt>(S));
 }
 
 ProgramStateRef processLoopEnd(const Stmt *LoopStmt, ProgramStateRef State) {
-  auto ULS = State->get<UnrolledLoopStack>();
-  auto MBVS = State->get<MaxBlockVisitStack>();
+  auto LS = State->get<LoopStack>();
+  assert(!LS.isEmpty() && "Loop not added to the stack.");
+  assert(LoopStmt == LS.getHead().getLoopStmt() &&
+         "Loop is not on top of the stack.");
 
-  assert(LoopStmt == ULS.getHead() && "Loop not added to the stack.");
-
-  State = State->set<UnrolledLoopStack>(ULS.getTail());
-  State = State->set<MaxBlockVisitStack>(MBVS.getTail());
+  State = State->set<LoopStack>(LS.getTail());
   return State;
 }
 
@@ -133,29 +175,29 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
   return !Matches.empty();
 }
 
-ProgramStateRef updateUnrolledLoops(const Stmt *LoopStmt, ASTContext &ASTCtx,
-                                    ProgramStateRef State){
+ProgramStateRef updateLoopStack(const Stmt *LoopStmt, ASTContext &ASTCtx,
+                                ProgramStateRef State,
+                                const LocationContext *LCtx) {
   if (!isLoopStmt(LoopStmt))
     return State;
 
-  auto ULS = State->get<UnrolledLoopStack>();
-  if (!ULS.isEmpty() && LoopStmt == ULS.getHead())
+  auto LS = State->get<LoopStack>();
+  if (!LS.isEmpty() && LoopStmt == LS.getHead().getLoopStmt() &&
+      LCtx == LS.getHead().getLocationContext())
     return State;
 
-  if(!shouldCompletelyUnroll(LoopStmt, ASTCtx)){
-    State = State->add<MaxBlockVisitStack>(llvm::APInt(1, 0));
-    State = State->add<UnrolledLoopStack>(LoopStmt);
+  if (!shouldCompletelyUnroll(LoopStmt, ASTCtx)) {
+    State = State->add<LoopStack>(LoopState::getNormal(LoopStmt, LCtx));
     return State;
   }
 
-  State = State->add<MaxBlockVisitStack>(llvm::APInt(1, 1));
-  State = State->add<UnrolledLoopStack>(LoopStmt);
+  State = State->add<LoopStack>(LoopState::getUnrolled(LoopStmt, LCtx));
   return State;
 }
 
 bool isUnrolledState(ProgramStateRef State) {
-  auto MBVS = State->get<MaxBlockVisitStack>();
-  if (MBVS.isEmpty() or MBVS.getHead() == 0 )
+  auto LS = State->get<LoopStack>();
+  if (LS.isEmpty() || !LS.getHead().isUnrolled())
     return false;
   return true;
 }
