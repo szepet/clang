@@ -272,6 +272,3 @@ int recursion_unroll4(bool b) {
   int a = 22 / k;
   return 0;
 }
-
-
-

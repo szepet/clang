@@ -65,17 +65,6 @@ REGISTER_LIST_WITH_PROGRAMSTATE(LoopStack, LoopState)
 namespace clang {
 namespace ento {
 
-static void printLoopStack(ProgramStateRef State) {
-  auto LS = State->get<LoopStack>();
-  llvm::errs() << "LoopStack:\n";
-  for (auto &E : LS) {
-    llvm::errs() << E.getLoopStmt() << " " << E.isUnrolled() << " "
-                 << E.getLocationContext() << "\n";
-  }
-  llvm::errs() << "\n";
-  return;
-}
-
 static bool isLoopStmt(const Stmt *S) {
   return S && (isa<ForStmt>(S) || isa<WhileStmt>(S) || isa<DoStmt>(S));
 }
@@ -137,7 +126,7 @@ getAddrTo(internal::Matcher<Decl> VarNodeMatcher) {
 
 static internal::Matcher<Stmt> hasSuspiciousStmt(StringRef NodeName) {
   return hasDescendant(stmt(
-      anyOf(gotoStmt(), switchStmt(),
+      anyOf(gotoStmt(), switchStmt(), returnStmt(),
             // Escaping and not known mutation of the loop counter is handled
             // by exclusion of assigning and address-of operators and
             // pass-by-ref function calls on the loop counter from the body.
