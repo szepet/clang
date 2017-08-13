@@ -170,6 +170,11 @@ private:
 };
 
 /// Represents the point where a loop ends.
+/// This element is is only produced when building the CFG for the static
+/// analyzer and hidden behind the 'cfg-loopexit' analyzer config flag.
+///
+/// Note: a loop exit element can be reached even when the loop body was never
+/// entered.
 class CFGLoopExit : public CFGElement {
 public:
     explicit CFGLoopExit(const Stmt *stmt)
@@ -747,8 +752,8 @@ public:
     Elements.push_back(CFGLifetimeEnds(VD, S), C);
   }
 
-  void appendLoopExit(const Stmt *S, BumpVectorContext &C) {
-    Elements.push_back(CFGLoopExit(S), C);
+  void appendLoopExit(const Stmt *LoopStmt, BumpVectorContext &C) {
+    Elements.push_back(CFGLoopExit(LoopStmt), C);
   }
 
   void appendDeleteDtor(CXXRecordDecl *RD, CXXDeleteExpr *DE, BumpVectorContext &C) {
