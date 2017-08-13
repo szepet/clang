@@ -176,8 +176,10 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx) {
 }
 
 ProgramStateRef updateLoopStack(const Stmt *LoopStmt, ASTContext &ASTCtx,
-                                ProgramStateRef State,
-                                const LocationContext *LCtx) {
+                                ExplodedNode* Pred) {
+  auto State = Pred->getState();
+  auto LCtx = Pred->getLocationContext();
+
   if (!isLoopStmt(LoopStmt))
     return State;
 

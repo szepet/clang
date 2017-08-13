@@ -1526,8 +1526,7 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
     if (Term) {
       ProgramStateRef NewState = updateLoopStack(Term, AMgr.getASTContext(),
-                                                 Pred->getState(),
-                                                 Pred->getLocationContext());
+                                                 Pred);
       if (NewState != Pred->getState()){
         Pred = nodeBuilder.generateNode(NewState, Pred);
       }

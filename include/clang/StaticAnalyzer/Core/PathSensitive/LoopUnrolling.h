@@ -34,8 +34,7 @@ class AnalysisManager;
 bool isUnrolledState(ProgramStateRef State);
 /// Updates the stack of loops contained by the ProgramState.
 ProgramStateRef updateLoopStack(const Stmt *LoopStmt, ASTContext &ASTCtx,
-                                ProgramStateRef State,
-                                const LocationContext *LCtx);
+                                ExplodedNode* Pred);
 /// Updates the given ProgramState. In current implementation it removes the top
 /// element of the stack of loops.
 ProgramStateRef processLoopEnd(const Stmt *LoopStmt, ProgramStateRef State);
