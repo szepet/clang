@@ -382,6 +382,12 @@ bool AnalyzerOptions::shouldWidenLoops() {
   return WidenLoops.getValue();
 }
 
+bool AnalyzerOptions::shouldConservativelyWidenLoops() {
+  if (!ConservativelyWidenLoops.hasValue())
+    ConservativelyWidenLoops = getBooleanOption("widen-loops-conservative", false);
+  return ConservativelyWidenLoops.getValue();
+}
+
 bool AnalyzerOptions::shouldUnrollLoops() {
   if (!UnrollLoops.hasValue())
     UnrollLoops = getBooleanOption("unroll-loops", /*Default=*/false);

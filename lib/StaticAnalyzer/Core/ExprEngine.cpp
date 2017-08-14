@@ -1544,7 +1544,8 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
   // maximum number of times, widen the loop.
   unsigned int BlockCount = nodeBuilder.getContext().blockCount();
   if (BlockCount == AMgr.options.maxBlockVisitOnPath - 1 &&
-      AMgr.options.shouldWidenLoops()) {
+      (AMgr.options.shouldWidenLoops() ||
+       AMgr.options.shouldConservativelyWidenLoops())) {
     const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
     if (!(Term &&
           (isa<ForStmt>(Term) || isa<WhileStmt>(Term) || isa<DoStmt>(Term))))
@@ -1552,7 +1553,11 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     // Widen.
     const LocationContext *LCtx = Pred->getLocationContext();
     ProgramStateRef WidenedState =
-        getWidenedLoopState(Pred->getState(), LCtx, BlockCount, Term);
+            AMgr.options.shouldConservativelyWidenLoops()
+            ? getConservativelyWidenedLoopState(Pred->getState(),
+                                                AMgr.getASTContext(), LCtx,
+                                                BlockCount, Term)
+            : getWidenedLoopState(Pred->getState(), LCtx, BlockCount, Term);
     nodeBuilder.generateNode(WidenedState, Pred);
     return;
   }

@@ -278,6 +278,9 @@ private:
   /// \sa shouldWidenLoops
   Optional<bool> WidenLoops;
 
+  /// \sa shouldWidenLoops
+  Optional<bool> ConservativelyWidenLoops;
+
   /// \sa shouldUnrollLoops
   Optional<bool> UnrollLoops;
 
@@ -573,7 +576,12 @@ public:
   /// This is controlled by the 'widen-loops' config option.
   bool shouldWidenLoops();
 
-  /// Returns true if the analysis should try to unroll loops with known bounds.
+  /// Returns true if the analysis should try to widen loops in a conservative
+  /// manner (only widen loops which meets specific requirements).
+  /// This is controlled by the 'widen-loops-conservative' config option.
+  bool shouldConservativelyWidenLoops();
+
+    /// Returns true if the analysis should try to unroll loops with known bounds.
   /// This is controlled by the 'unroll-loops' config option.
   bool shouldUnrollLoops();
 

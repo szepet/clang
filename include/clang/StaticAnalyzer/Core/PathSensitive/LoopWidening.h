@@ -30,6 +30,12 @@ ProgramStateRef getWidenedLoopState(ProgramStateRef PrevState,
                                     const LocationContext *LCtx,
                                     unsigned BlockCount, const Stmt *LoopStmt);
 
+ProgramStateRef getConservativelyWidenedLoopState(ProgramStateRef State,
+                                                  ASTContext &ASTCtx,
+                                                  const LocationContext *LCtx,
+                                                  unsigned BlockCount,
+                                                  const Stmt *LoopStmt);
+
 } // end namespace ento
 } // end namespace clang
 
