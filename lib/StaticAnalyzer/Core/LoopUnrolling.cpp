@@ -51,6 +51,7 @@ public:
   void Profile(llvm::FoldingSetNodeID &ID) const {
     ID.AddInteger(K);
     ID.AddPointer(LoopStmt);
+    ID.AddPointer(LCtx);
   }
 };
 
@@ -210,6 +211,7 @@ bool shouldCompletelyUnroll(const Stmt *LoopStmt, ASTContext &ASTCtx,
   return !isPossiblyEscaped(CounterVar->getCanonicalDecl(), Pred);
 }
 
+// updateLoopStack is called on every basic block, therefore it needs to be fast
 ProgramStateRef updateLoopStack(const Stmt *LoopStmt, ASTContext &ASTCtx,
                                 ExplodedNode* Pred) {
   auto State = Pred->getState();
