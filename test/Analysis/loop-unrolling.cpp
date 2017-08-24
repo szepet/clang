@@ -272,3 +272,10 @@ int recursion_unroll4(bool b) {
   int a = 22 / k;
   return 0;
 }
+
+int loopexit_while_empty_loopstack() {
+  if (getNum())
+    for (int i = 1; i < 8; i++)
+      ;
+  return 0;
+}

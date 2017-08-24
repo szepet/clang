@@ -184,8 +184,10 @@ bool AnalyzerOptions::includeLifetimeInCFG() {
 }
 
 bool AnalyzerOptions::includeLoopExitInCFG() {
-  return getBooleanOption(IncludeLoopExitInCFG, "cfg-loopexit",
-          /* Default = */ false);
+  bool explicitlyIncludeLoopExit = getBooleanOption(IncludeLoopExitInCFG,
+                                                  "cfg-loopexit",
+                                                  /* Default = */ false);
+  return shouldUnrollLoops() || explicitlyIncludeLoopExit;
 }
 
 bool AnalyzerOptions::mayInlineCXXStandardLibrary() {
