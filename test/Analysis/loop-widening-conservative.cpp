@@ -1,4 +1,4 @@
-// RUN: %clang_analyze_cc1 -analyzer-checker=core,unix.Malloc,debug.ExprInspection -analyzer-max-loop 4 -analyzer-config widen-loops-conservative=true -verify -std=c++11 %s
+// RUN: %clang_analyze_cc1 -analyzer-checker=core,unix.Malloc,debug.ExprInspection -analyzer-max-loop 4 -analyzer-config widen-loops-conservative=true,cfg-loopexit=true -verify -std=c++11 %s
 
 void clang_analyzer_eval(int);
 void clang_analyzer_warnIfReached();
@@ -140,13 +140,13 @@ void unknown_after_loop(int s_arg) {
   int s_local = 2;
   int *h_ptr = (int *)malloc(sizeof(int));
   int change_var = 1;
-  int nochange_var = 10;
+  int nochange_var = 2;
   for (int i = 0; i < 10; ++i) {
     change_var *= nochange_var + nochange_var;
   }
 
-  clang_analyzer_eval(change_var == 1);    // expected-warning {{UNKNOWN}}
-  clang_analyzer_eval(nochange_var == 10); // expected-warning {{TRUE}}
+  clang_analyzer_eval(change_var == 1);   // expected-warning {{UNKNOWN}}
+  clang_analyzer_eval(nochange_var == 2); // expected-warning {{TRUE}}
 
   clang_analyzer_eval(g_global);     // expected-warning {{UNKNOWN}}
   clang_analyzer_eval(s_arg == 1);   // expected-warning {{TRUE}}
@@ -156,7 +156,8 @@ void unknown_after_loop(int s_arg) {
 }
 
 void nested_loop_outer_widen() {
-  int i = 0, j = 0;
+  int i;
+  int j;
   for (i = 0; i < 10; i++) {
     clang_analyzer_eval(i < 10); // expected-warning {{TRUE}}
     for (j = 0; j < 2; j++) {
@@ -164,7 +165,7 @@ void nested_loop_outer_widen() {
     }
     clang_analyzer_eval(j >= 2); // expected-warning {{TRUE}}
   }
-  clang_analyzer_warnIfReached(); // no-warning
+  clang_analyzer_eval(i >= 10); // expected-warning {{TRUE}}
 }
 
 void nested_loop_inner_widen() {
@@ -176,7 +177,54 @@ void nested_loop_inner_widen() {
     }
     clang_analyzer_eval(j >= 10); // expected-warning {{TRUE}}
   }
-  clang_analyzer_warnIfReached(); // no-warning
+  clang_analyzer_eval(i >= 2); // expected-warning {{TRUE}}
+}
+
+void nested_loops() {
+  int i = 0, j = 0;
+  int x = 2;
+  for (i = 0; i < 5; i++) {
+    if (i == 3)
+      break;
+    for (j = 0; j < 10; j++) {
+      clang_analyzer_eval(j < 10); // expected-warning {{TRUE}}
+    }
+    clang_analyzer_eval(j >= 10); // expected-warning {{TRUE}}
+  }
+  clang_analyzer_eval(i >= 5); // expected-warning {{TRUE}} // expected-warning {{FALSE}}
+  clang_analyzer_eval(i == 3); // expected-warning {{TRUE}} // expected-warning {{FALSE}}
+
+  // Precision loss of an inner loop variable resulted by the widening of the
+  // outer loop.
+  clang_analyzer_eval(j >= 10); // expected-warning {{UNKNOWN}}
+
+  clang_analyzer_eval(x == 2); // expected-warning {{TRUE}}
+}
+
+void nested_loops_2() {
+  int i = 0, j = 0, k = 0;
+  int x = 2;
+  for (i = 0; i < 5; i++) {
+    if (i == 3)
+      break;
+    for (j = 0; j < 10; j++) {
+      clang_analyzer_eval(j < 10); // expected-warning {{TRUE}}
+      for (k = 0; k < 42; k++) {
+        clang_analyzer_eval(k < 42); // expected-warning {{TRUE}}
+      }
+    }
+    clang_analyzer_eval(k >= 42); // expected-warning {{UNKNOWN}}
+    clang_analyzer_eval(j >= 10); // expected-warning {{TRUE}}
+  }
+  clang_analyzer_eval(i >= 5); // expected-warning {{TRUE}} // expected-warning {{FALSE}}
+  clang_analyzer_eval(i == 3); // expected-warning {{TRUE}} // expected-warning {{FALSE}}
+
+  // Precision loss of the inner loop variables resulted by the widening of the
+  // outer loops.
+  clang_analyzer_eval(j >= 10); // expected-warning {{UNKNOWN}}
+  clang_analyzer_eval(k >= 42); // expected-warning {{UNKNOWN}}
+
+  clang_analyzer_eval(x == 2); // expected-warning {{TRUE}}
 }
 
 struct A {
@@ -188,6 +236,14 @@ struct A {
   void operator=(const A &other);
   void assign(const A &other) { num = other.num; }
 };
+
+void check_memberexpr() {
+  A a(2);
+  for (int i = 0; i < 10; ++i) {
+    a.num = i;
+  }
+  clang_analyzer_eval(a.num == 9); // expected-warning {{UNKNOWN}}
+}
 
 void non_const_method_call() {
   A a(42);
@@ -205,7 +261,7 @@ void const_method_call() {
   clang_analyzer_eval(a.num == 42); // expected-warning {{TRUE}}
 }
 
-void knwon_method_call() {
+void known_method_call() {
   A a(42);
   A b(10);
   for (int i = 0; i < 10; ++i) {

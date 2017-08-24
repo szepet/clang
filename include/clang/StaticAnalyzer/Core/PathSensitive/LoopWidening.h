@@ -18,6 +18,7 @@
 
 #include "clang/Analysis/CFG.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
 
 namespace clang {
 namespace ento {
@@ -35,6 +36,15 @@ ProgramStateRef getConservativelyWidenedLoopState(ProgramStateRef State,
                                                   const LocationContext *LCtx,
                                                   unsigned BlockCount,
                                                   const Stmt *LoopStmt);
+
+bool isWidenedState(ProgramStateRef State);
+const Stmt *isInsideOfALoop(ProgramStateRef State);
+
+ProgramStateRef updateWidenLoopStack(const Stmt *LoopStmt, ASTContext &ASTCtx,
+                                     ExplodedNode *Pred);
+
+ProgramStateRef processWidenLoopEnd(const Stmt *LoopStmt,
+                                    ProgramStateRef State);
 
 } // end namespace ento
 } // end namespace clang

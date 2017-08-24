@@ -524,6 +524,9 @@ void ExprEngine::ProcessLoopExit(const Stmt* S, ExplodedNode *Pred) {
   if(AMgr.options.shouldUnrollLoops())
     NewState = processLoopEnd(S, NewState);
 
+  if(AMgr.options.shouldConservativelyWidenLoops())
+    NewState = processWidenLoopEnd(S, NewState);
+
   LoopExit PP(S, Pred->getLocationContext());
   Bldr.generateNode(PP, NewState, Pred);
   // Enqueue the new nodes onto the work list.
@@ -1515,6 +1518,48 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
   return true;
 }
 
+bool ExprEngine::replayWithWidening(ExplodedNode *N, const Stmt *LoopStmt,
+                                    unsigned BlockCount) {
+  while (N) {
+    N = N->pred_empty() ? nullptr : *(N->pred_begin());
+    ProgramPoint L = N->getLocation();
+    if (!L.getAs<BlockEntrance>())
+      continue;
+    if (Optional<BlockEntrance> BE = L.getAs<BlockEntrance>())
+      if(BE->getBlock()->getTerminator() != LoopStmt)
+      continue;
+    break;
+  }
+  assert(N && "Reaching the root without finding the entrance of LoopStmt");
+  // TODO: Clean up the unneeded nodes.
+
+  // Build an Epsilon node from which we will restart the analyzes.
+  ProgramPoint NewNodeLoc =
+          EpsilonPoint(N->getLocationContext(), LoopStmt);
+
+  // Note, changing the state ensures that we are not going to cache out.
+  ProgramStateRef NewNodeState = getConservativelyWidenedLoopState(
+          N->getState(), AMgr.getASTContext(), N->getLocationContext(),
+          BlockCount, LoopStmt);
+
+  if(NewNodeState == N->getState())
+    return false;
+
+  bool IsNew = false;
+  ExplodedNode *NewNode = G.getNode(NewNodeLoc, NewNodeState, false, &IsNew);
+  // We cached out at this point.
+  if (!IsNew)
+    return true;
+
+  NewNode->addPredecessor(N, G);
+
+  // Add the new node to the work list.
+  ExplodedNodeSet Dst(NewNode);
+  Engine.enqueue(Dst);
+  return true;
+}
+
+
 /// Block entrance.  (Update counters).
 void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
@@ -1540,9 +1585,64 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
       return;
   }
 
+  unsigned int BlockCount = nodeBuilder.getContext().blockCount();
+
+  // FIXME: Refactor this into a checker.
+  if (BlockCount >= AMgr.options.maxBlockVisitOnPath) {
+    ProgramStateRef State = Pred->getState();
+    static SimpleProgramPointTag tag(TagProviderName, "Block count exceeded");
+    const ExplodedNode *Sink =
+            nodeBuilder.generateSink(State, Pred, &tag);
+
+    if (AMgr.options.shouldConservativelyWidenLoops() &&
+        !isWidenedState(State)) {
+      if (const Stmt *LoopStmt = isInsideOfALoop(State))
+        if(replayWithWidening(Pred, LoopStmt, BlockCount))
+          return;
+    }
+
+    // Check if we stopped at the top level function or not.
+    // Root node should have the location context of the top most function.
+    const LocationContext *CalleeLC = Pred->getLocation().getLocationContext();
+    const LocationContext *CalleeSF = CalleeLC->getCurrentStackFrame();
+    const LocationContext *RootLC =
+            (*G.roots_begin())->getLocation().getLocationContext();
+    if (RootLC->getCurrentStackFrame() != CalleeSF) {
+      Engine.FunctionSummaries->markReachedMaxBlockCount(CalleeSF->getDecl());
+
+      // Re-run the call evaluation without inlining it, by storing the
+      // no-inlining policy in the state and enqueuing the new work item on
+      // the list. Replay should almost never fail. Use the stats to catch it
+      // if it does.
+      if ((!AMgr.options.NoRetryExhausted &&
+           replayWithoutInlining(Pred, CalleeLC)))
+        return;
+      NumMaxBlockCountReachedInInlined++;
+    } else
+      NumMaxBlockCountReached++;
+
+    // Make sink nodes as exhausted(for stats) only if retry failed.
+    Engine.blocksExhausted.push_back(std::make_pair(L, Sink));
+    return;
+  }
+
+  do {
+    if (AMgr.options.shouldConservativelyWidenLoops()) {
+      const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
+      ProgramStateRef NewState = updateWidenLoopStack(Term,
+                                                      AMgr.getASTContext(),
+                                                      Pred);
+      if(NewState == Pred->getState())
+        break;
+      ExplodedNode *NewNode = nodeBuilder.generateNode(NewState, Pred);
+      if (!NewNode)
+        return;
+      Pred = NewNode;
+    }
+  }while(false);
+
   // If this block is terminated by a loop and it has already been visited the
   // maximum number of times, widen the loop.
-  unsigned int BlockCount = nodeBuilder.getContext().blockCount();
   if (BlockCount == AMgr.options.maxBlockVisitOnPath - 1 &&
       (AMgr.options.shouldWidenLoops() ||
        AMgr.options.shouldConservativelyWidenLoops())) {
@@ -1562,35 +1662,6 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
     return;
   }
 
-  // FIXME: Refactor this into a checker.
-  if (BlockCount >= AMgr.options.maxBlockVisitOnPath) {
-    static SimpleProgramPointTag tag(TagProviderName, "Block count exceeded");
-    const ExplodedNode *Sink =
-                   nodeBuilder.generateSink(Pred->getState(), Pred, &tag);
-
-    // Check if we stopped at the top level function or not.
-    // Root node should have the location context of the top most function.
-    const LocationContext *CalleeLC = Pred->getLocation().getLocationContext();
-    const LocationContext *CalleeSF = CalleeLC->getCurrentStackFrame();
-    const LocationContext *RootLC =
-                        (*G.roots_begin())->getLocation().getLocationContext();
-    if (RootLC->getCurrentStackFrame() != CalleeSF) {
-      Engine.FunctionSummaries->markReachedMaxBlockCount(CalleeSF->getDecl());
-
-      // Re-run the call evaluation without inlining it, by storing the
-      // no-inlining policy in the state and enqueuing the new work item on
-      // the list. Replay should almost never fail. Use the stats to catch it
-      // if it does.
-      if ((!AMgr.options.NoRetryExhausted &&
-           replayWithoutInlining(Pred, CalleeLC)))
-        return;
-      NumMaxBlockCountReachedInInlined++;
-    } else
-      NumMaxBlockCountReached++;
-
-    // Make sink nodes as exhausted(for stats) only if retry failed.
-    Engine.blocksExhausted.push_back(std::make_pair(L, Sink));
-  }
 }
 
 //===----------------------------------------------------------------------===//

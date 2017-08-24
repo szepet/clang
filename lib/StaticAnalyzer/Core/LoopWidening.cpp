@@ -18,12 +18,50 @@
 #include "clang/AST/AST.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
 #include "llvm/ADT/SmallSet.h"
+
 
 using namespace clang;
 using namespace ento;
 using namespace clang::ast_matchers;
+
+struct LoopState {
+private:
+  enum Kind { Normal, Widened } K;
+  const Stmt *LoopStmt;
+  const LocationContext *LCtx;
+  LoopState(Kind InK, const Stmt *S, const LocationContext *L)
+      : K(InK), LoopStmt(S), LCtx(L) {}
+
+public:
+  static LoopState getNormal(const Stmt *S, const LocationContext *L) {
+    return LoopState(Normal, S, L);
+  }
+  static LoopState getWidened(const Stmt *S, const LocationContext *L) {
+    return LoopState(Widened, S, L);
+  }
+  bool isWidened() const { return K == Widened; }
+  const Stmt *getLoopStmt() const { return LoopStmt; }
+  const LocationContext *getLocationContext() const { return LCtx; }
+  bool operator==(const LoopState &X) const {
+    return K == X.K && LoopStmt == X.LoopStmt && LCtx == X.LCtx;
+  }
+  void Profile(llvm::FoldingSetNodeID &ID) const {
+    ID.AddInteger(K);
+    ID.AddPointer(LoopStmt);
+    ID.AddPointer(LCtx);
+  }
+};
+
+// The tracked stack of loops. The stack indicates that which loops the
+// simulated element contained by. The loops are marked depending if we decided
+// to unroll them.
+// TODO: The loop stack should not need to be in the program state since it is
+// lexical in nature. Instead, the stack of loops should be tracked in the
+// LocationContext.
+REGISTER_LIST_WITH_PROGRAMSTATE(LoopStack, LoopState)
 
 /// Return the loops condition Stmt or NULL if LoopStmt is not a loop
 static const Expr *getLoopCondition(const Stmt *LoopStmt) {
@@ -72,6 +110,11 @@ static internal::Matcher<Stmt> changeVariable() {
                cxxNonConstCall("changedExpr"));
 }
 
+static bool isLoopStmt(const Stmt *S) {
+  return S && (isa<ForStmt>(S) || isa<WhileStmt>(S) || isa<DoStmt>(S));
+}
+
+
 namespace clang {
 namespace ento {
 
@@ -104,6 +147,32 @@ bool collectRegion(const Expr *E,
   }
 }
 
+ProgramStateRef processWidenLoopEnd(const Stmt *LoopStmt,
+                                    ProgramStateRef State) {
+  auto LS = State->get<LoopStack>();
+  if (!LS.isEmpty() && LS.getHead().getLoopStmt() == LoopStmt)
+    State = State->set<LoopStack>(LS.getTail());
+  return State;
+}
+
+ProgramStateRef updateWidenLoopStack(const Stmt *LoopStmt, ASTContext &ASTCtx,
+                                     ExplodedNode *Pred) {
+  auto State = Pred->getState();
+  auto LCtx = Pred->getLocationContext();
+
+  if (!isLoopStmt(LoopStmt))
+    return State;
+
+  auto LS = State->get<LoopStack>();
+  if (!LS.isEmpty() && LoopStmt == LS.getHead().getLoopStmt() &&
+      LCtx == LS.getHead().getLocationContext()) {
+    return State;
+  }
+
+  State = State->add<LoopStack>(LoopState::getNormal(LoopStmt, LCtx));
+  return State;
+}
+
 ProgramStateRef getConservativelyWidenedLoopState(ProgramStateRef State,
                                                   ASTContext &ASTCtx,
                                                   const LocationContext *LCtx,
@@ -118,6 +187,14 @@ ProgramStateRef getConservativelyWidenedLoopState(ProgramStateRef State,
     if (!Success)
       return State;
   }
+
+  auto LS = State->get<LoopStack>();
+  assert(LS.getHead().getLoopStmt() == LoopStmt);
+  assert(!LS.getHead().isWidened());
+
+  State = State->set<LoopStack>(LS.getTail());
+  State = State->add<LoopStack>(LoopState::getWidened(LoopStmt, LCtx));
+
   llvm::SmallVector<const MemRegion *, 16> Regions;
   Regions.reserve(RegionsToInvalidate.size());
   for (auto E : RegionsToInvalidate)
@@ -126,6 +203,24 @@ ProgramStateRef getConservativelyWidenedLoopState(ProgramStateRef State,
   return State->invalidateRegions(llvm::makeArrayRef(Regions),
                                   getLoopCondition(LoopStmt), BlockCount, LCtx,
                                   true);
+}
+
+bool isWidenedState(ProgramStateRef State) {
+  if (!State)
+    return false;
+  auto LS = State->get<LoopStack>();
+  if (LS.isEmpty() || !LS.getHead().isWidened())
+    return false;
+  return true;
+}
+
+const Stmt *isInsideOfALoop(ProgramStateRef State) {
+  if (!State)
+    return nullptr;
+  auto LS = State->get<LoopStack>();
+  if (LS.isEmpty())
+    return nullptr;
+  return LS.getHead().getLoopStmt();
 }
 
 ProgramStateRef getWidenedLoopState(ProgramStateRef PrevState,
