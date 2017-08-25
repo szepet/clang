@@ -319,14 +319,6 @@ int loopexit_while_empty_loopstack() {
   return 0;
 }
 
-int num_steps_on_limit() {
-  for (int i = 0; i < 128; i++) {
-    clang_analyzer_numTimesReached(); // expected-warning {{128}}
-  }
-  clang_analyzer_numTimesReached(); // expected-warning {{1}}
-  return 0;
-}
-
 int num_steps_over_limit1() {
   for (int i = 0; i < 129; i++) {
     clang_analyzer_numTimesReached(); // expected-warning {{4}}
