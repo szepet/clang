@@ -12,7 +12,6 @@ add_clang_library(clangTooling
   ArgumentsAdjusters.cpp
   CommonOptionsParser.cpp
   CompilationDatabase.cpp
-  CrossTranslationUnit.cpp
   Execution.cpp
   FileMatchTrie.cpp
   FixIt.cpp
