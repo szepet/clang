@@ -16,6 +16,7 @@
 #include "clang/Basic/LLVM.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/SmallPtrSet.h"
 
 namespace clang {
 class CompilerInstance;
@@ -62,6 +63,7 @@ public:
                                            StringRef CompilationDatabase = "");
 
   std::string getLookupName(const NamedDecl *ND);
+  bool isInvalidFunction(const FunctionDecl *FD);
 private:
   ASTImporter &getOrCreateASTImporter(ASTContext &From);
   const FunctionDecl *findFunctionInDeclContext(const DeclContext *DC,
@@ -72,6 +74,7 @@ private:
   llvm::StringMap<std::string> FunctionFileMap;
   llvm::DenseMap<TranslationUnitDecl *, std::unique_ptr<ASTImporter>>
       ASTUnitImporterMap;
+  llvm::SmallPtrSet<const FunctionDecl *, 8> InvalidFunctions;
   CompilerInstance &CI;
   ASTContext &Context;
 };

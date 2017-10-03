@@ -84,7 +84,10 @@ namespace clang {
     /// \brief Declaration (from, to) pairs that are known not to be equivalent
     /// (which we have already complained about).
     NonEquivalentDeclSet NonEquivalentDecls;
-    
+
+    /// This flag signs if the Importer encountered an unsupported node during
+    /// the last import process.
+    bool encounteredUnsupportedNode;
   public:
     /// \brief Create a new AST importer.
     ///
@@ -311,7 +314,16 @@ namespace clang {
     /// equivalent.
     bool IsStructurallyEquivalent(QualType From, QualType To,
                                   bool Complain = true);
+
+    void setEncounteredUnsupportedNode(bool B) {
+      encounteredUnsupportedNode = B;
+    }
+
+    bool hasEncounteredUnsupportedNode() {
+      return encounteredUnsupportedNode;
+    }
   };
+
 }
 
 #endif // LLVM_CLANG_AST_ASTIMPORTER_H
