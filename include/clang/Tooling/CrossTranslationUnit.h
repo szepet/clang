@@ -63,6 +63,9 @@ public:
                                            StringRef CompilationDatabase = "");
 
   std::string getLookupName(const NamedDecl *ND);
+
+  /// Returns if FD is an imported function which import process encountered an
+  /// unsupported AST node.
   bool isInvalidFunction(const FunctionDecl *FD);
 private:
   ASTImporter &getOrCreateASTImporter(ASTContext &From);

@@ -39,6 +39,8 @@ STATISTIC(
 STATISTIC(NumIterateNotFound, "The # of iteration not found");
 STATISTIC(NumGetCTUSuccess, "The # of getCTUDefinition successfully return the "
                             "requested function's body");
+STATISTIC(NumUnsupportedNodeFound, "The # of imports when the ASTImporter "
+                                   "encountered an unsupported AST Node");
 }
 
 namespace clang {
@@ -196,6 +198,7 @@ const FunctionDecl *CrossTranslationUnit::getCrossTUDefinition(
     if(Importer.hasEncounteredUnsupportedNode()){
       InvalidFunctions.insert(ToDecl);
       Importer.setEncounteredUnsupportedNode(false);
+      NumUnsupportedNodeFound++;
       return nullptr;
     }
     assert(ToDecl->hasBody());
