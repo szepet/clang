@@ -44,7 +44,7 @@ int chf1(int x);
 typedef struct AVBuffer avt;
 int avtSize(void);
 
-int fun_with_unsupported_node();
+int fun_with_unsupported_node(int);
 
 int main() {
   clang_analyzer_eval(f(3) == 2); // expected-warning{{TRUE}}
@@ -62,7 +62,7 @@ int main() {
   clang_analyzer_eval(avtSize() == 4); // expected-warning{{TRUE}}
 
   // First time, when the import of the function with unsupported node happens.
-  clang_analyzer_eval(fun_with_unsupported_node() == 0); // expected-warning{{UNKNOWN}}
+  clang_analyzer_eval(fun_with_unsupported_node(0) == 0); // expected-warning{{UNKNOWN}}
   // When it is already imported.
-  clang_analyzer_eval(fun_with_unsupported_node() == 0); // expected-warning{{UNKNOWN}}
+  clang_analyzer_eval(fun_with_unsupported_node(0) == 0); // expected-warning{{UNKNOWN}}
 }

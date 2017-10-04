@@ -79,7 +79,11 @@ int avtSize(void){
 template <typename T>
 class X { T t; };
 
-int fun_with_unsupported_node() {
-  using typeAliasDecl = X<int>;
-  return 0;
+template <typename T, int Size> class vector {
+  typedef T __attribute__((ext_vector_type(Size))) type;
+};
+// DependentSizedExtVectorType import is not supported yet.
+int fun_with_unsupported_node(int n) {
+  vector<int,8> v;
+  return n;
 }
