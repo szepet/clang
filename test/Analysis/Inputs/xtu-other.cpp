@@ -76,9 +76,10 @@ int avtSize(void){
 	return sizeof(avt);
 }
 
-template <typename T> class X { T t; };
+template <typename T>
+class X { T t; };
 
-int fun_with_unsupported_node(){
+int fun_with_unsupported_node() {
   using typeAliasDecl = X<int>;
   return 0;
 }

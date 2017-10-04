@@ -15,8 +15,8 @@
 
 #include "clang/Basic/LLVM.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace clang {
 class CompilerInstance;
@@ -67,6 +67,7 @@ public:
   /// Returns if FD is an imported function which import process encountered an
   /// unsupported AST node.
   bool isInvalidFunction(const FunctionDecl *FD);
+
 private:
   ASTImporter &getOrCreateASTImporter(ASTContext &From);
   const FunctionDecl *findFunctionInDeclContext(const DeclContext *DC,

@@ -88,6 +88,7 @@ namespace clang {
     /// This flag signs if the Importer encountered an unsupported node during
     /// the last import process.
     bool encounteredUnsupportedNode;
+
   public:
     /// \brief Create a new AST importer.
     ///
@@ -319,11 +320,8 @@ namespace clang {
       encounteredUnsupportedNode = B;
     }
 
-    bool hasEncounteredUnsupportedNode() {
-      return encounteredUnsupportedNode;
-    }
+    bool hasEncounteredUnsupportedNode() { return encounteredUnsupportedNode; }
   };
-
 }
 
 #endif // LLVM_CLANG_AST_ASTIMPORTER_H

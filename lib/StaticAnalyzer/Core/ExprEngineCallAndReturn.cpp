@@ -793,7 +793,7 @@ bool ExprEngine::shouldInlineCall(const CallEvent &Call, const Decl *D,
   if (!D)
     return false;
 
-  if(CTU.isInvalidFunction(dyn_cast<FunctionDecl>(D)))
+  if (CTU.isInvalidFunction(dyn_cast<FunctionDecl>(D)))
     return false;
 
   AnalysisManager &AMgr = getAnalysisManager();

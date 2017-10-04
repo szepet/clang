@@ -195,7 +195,7 @@ const FunctionDecl *CrossTranslationUnit::getCrossTUDefinition(
           findFunctionInDeclContext(TU, LookupFnName)) {
     auto *ToDecl = cast<FunctionDecl>(
         Importer.Import(const_cast<FunctionDecl *>(ResultDecl)));
-    if(Importer.hasEncounteredUnsupportedNode()){
+    if (Importer.hasEncounteredUnsupportedNode()) {
       InvalidFunctions.insert(ToDecl);
       Importer.setEncounteredUnsupportedNode(false);
       NumUnsupportedNodeFound++;
@@ -221,8 +221,7 @@ ASTImporter &CrossTranslationUnit::getOrCreateASTImporter(ASTContext &From) {
   return *NewImporter;
 }
 
-bool CrossTranslationUnit::isInvalidFunction(const FunctionDecl* FD)
-{
+bool CrossTranslationUnit::isInvalidFunction(const FunctionDecl *FD) {
   return InvalidFunctions.find(FD) != InvalidFunctions.end();
 }
 
