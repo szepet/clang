@@ -350,7 +350,7 @@ void MisusedMovedObjectChecker::checkPreCall(const CallEvent &Call,
   const LocationContext *LC = C.getLocationContext();
   ExplodedNode *N = nullptr;
 
-  // Remove the MemRegions from the map on which a ctor/dtor call or assignement
+  // Remove the MemRegions from the map on which a ctor/dtor call or assignment
   // happened.
 
   // Checking constructor calls.
@@ -410,21 +410,28 @@ void MisusedMovedObjectChecker::checkPreCall(const CallEvent &Call,
   }
 
   // The remaining part is check only for method call on a moved-from object.
+
+  // We want to investigate the whole object, not only sub-object of a parent
+  // class in which the encountered method defined.
+  while (const CXXBaseObjectRegion *BR =
+             dyn_cast<CXXBaseObjectRegion>(ThisRegion))
+    ThisRegion = BR->getSuperRegion();
+
   if (isMoveSafeMethod(MethodDecl))
     return;
 
   if (isStateResetMethod(MethodDecl)) {
-    State = State->remove<TrackedRegionMap>(ThisRegion);
+    State = removeFromState(State, ThisRegion);
     C.addTransition(State);
     return;
   }
 
-  // If it is already reported then we dont report the bug again.
+  // If it is already reported then we don't report the bug again.
   const RegionState *ThisState = State->get<TrackedRegionMap>(ThisRegion);
   if (!(ThisState && ThisState->isMoved()))
     return;
 
-  // Dont report it in case if any base region is already reported
+  // Don't report it in case if any base region is already reported
   if (isAnyBaseRegionReported(State, ThisRegion))
     return;
 
