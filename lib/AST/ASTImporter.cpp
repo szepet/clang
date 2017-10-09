@@ -1249,10 +1249,9 @@ bool ASTNodeImporter::IsStructuralMatch(EnumDecl *FromEnum, EnumDecl *ToEnum) {
 
 bool ASTNodeImporter::IsStructuralMatch(FunctionTemplateDecl *From,
                                         FunctionTemplateDecl *To) {
-  StructuralEquivalenceContext Ctx(Importer.getFromContext(),
-                                   Importer.getToContext(),
-                                   Importer.getNonEquivalentDecls(),
-                                   false, false);
+  StructuralEquivalenceContext Ctx(
+      Importer.getFromContext(), Importer.getToContext(),
+      Importer.getNonEquivalentDecls(), false, false);
   return Ctx.IsStructurallyEquivalent(From, To);
 }
 
@@ -3848,7 +3847,6 @@ Decl *ASTNodeImporter::VisitVarTemplateSpecializationDecl(
   return D2;
 }
 
-
 Decl *ASTNodeImporter::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
   DeclContext *DC, *LexicalDC;
   DeclarationName Name;
@@ -3859,7 +3857,7 @@ Decl *ASTNodeImporter::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
     return nullptr;
   assert(DC && "Null DeclContext after importing decl parts");
   if (ToD)
-      return ToD;
+    return ToD;
 
   // Try to find a function in our own ("to") context with the same name, same
   // type, and in the same context as the function we're importing.
@@ -3872,7 +3870,7 @@ Decl *ASTNodeImporter::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
         continue;
 
       if (FunctionTemplateDecl *FoundFunction =
-          dyn_cast<FunctionTemplateDecl>(FoundDecls[I])) {
+              dyn_cast<FunctionTemplateDecl>(FoundDecls[I])) {
         if (FoundFunction->hasExternalFormalLinkage() &&
             D->hasExternalFormalLinkage()) {
           if (IsStructuralMatch(D, FoundFunction)) {
@@ -3885,13 +3883,13 @@ Decl *ASTNodeImporter::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
     }
   }
 
-  TemplateParameterList *Params = ImportTemplateParameterList(
-                                    D->getTemplateParameters());
+  TemplateParameterList *Params =
+      ImportTemplateParameterList(D->getTemplateParameters());
   if (!Params)
     return nullptr;
 
-  FunctionDecl *TemplatedFD = cast_or_null<FunctionDecl>(
-		                 Importer.Import(D->getTemplatedDecl()));
+  FunctionDecl *TemplatedFD =
+      cast_or_null<FunctionDecl>(Importer.Import(D->getTemplatedDecl()));
   if (!TemplatedFD)
     return nullptr;
 
@@ -3905,7 +3903,7 @@ Decl *ASTNodeImporter::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
     Attr *ToAttr = (*I)->clone(Importer.getToContext());
     ToAttr->setRange(Importer.Import((*I)->getRange()));
     ToFunc->addAttr(ToAttr);
-  }  
+  }
   ToFunc->setAccess(D->getAccess());
   ToFunc->setLexicalDeclContext(LexicalDC);
   Importer.Imported(D, ToFunc);
@@ -5427,7 +5425,7 @@ Expr *ASTNodeImporter::VisitMemberExpr(MemberExpr *E) {
 }
 
 Expr *ASTNodeImporter::VisitCXXDependentScopeMemberExpr(
-        CXXDependentScopeMemberExpr *E) {
+    CXXDependentScopeMemberExpr *E) {
 
   Expr *Base = Importer.Import(E->getBase());
   if (E->getBase() && !Base)
@@ -5451,22 +5449,20 @@ Expr *ASTNodeImporter::VisitCXXDependentScopeMemberExpr(
   }
 
   DeclarationName Name = Importer.Import(E->getMember());
-  if(E->getMember().isEmpty() && Name.isEmpty())
+  if (E->getMember().isEmpty() && Name.isEmpty())
     return nullptr;
   DeclarationNameInfo MemberNameInfo(Name, Importer.Import(E->getMemberLoc()));
   // Import additional name location/type info.
   ImportDeclarationNameLoc(E->getMemberNameInfo(), MemberNameInfo);
 
-  return CXXDependentScopeMemberExpr::Create(Importer.getToContext(),
-                                             Base, BaseType,
-                                             E->isArrow(),
-                                             Importer.Import(E->getOperatorLoc()),
-                                             Importer.Import(E->getQualifierLoc()),
-                                             Importer.Import(E->getTemplateKeywordLoc()),
-                                             cast_or_null<NamedDecl>(
-                                                     Importer.Import(E->getFirstQualifierFoundInScope())),
-                                             MemberNameInfo,
-                                             ResInfo);
+  return CXXDependentScopeMemberExpr::Create(
+      Importer.getToContext(), Base, BaseType, E->isArrow(),
+      Importer.Import(E->getOperatorLoc()),
+      Importer.Import(E->getQualifierLoc()),
+      Importer.Import(E->getTemplateKeywordLoc()),
+      cast_or_null<NamedDecl>(
+          Importer.Import(E->getFirstQualifierFoundInScope())),
+      MemberNameInfo, ResInfo);
 }
 
 Expr *ASTNodeImporter::VisitCallExpr(CallExpr *E) {
