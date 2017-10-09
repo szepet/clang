@@ -3898,10 +3898,9 @@ Decl *ASTNodeImporter::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
 
   TemplatedFD->setDescribedFunctionTemplate(ToFunc);
   // Import attributes.
-  for (Decl::attr_iterator I = D->attr_begin(), E = D->attr_end(); I != E;
-       ++I) {
-    Attr *ToAttr = (*I)->clone(Importer.getToContext());
-    ToAttr->setRange(Importer.Import((*I)->getRange()));
+  for (Attr *A : D->attrs()) {
+    Attr *ToAttr = A->clone(Importer.getToContext());
+    ToAttr->setRange(Importer.Import(A->getRange()));
     ToFunc->addAttr(ToAttr);
   }
   ToFunc->setAccess(D->getAccess());
