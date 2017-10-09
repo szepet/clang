@@ -503,37 +503,36 @@ TEST(ImportExpr, ImportCXXDependentScopeMemberExpr) {
 
 TEST(ImportExpr, ImportUnresolvedLookupExpr) {
   MatchVerifier<Decl> Verifier;
-  EXPECT_TRUE(
-      testImport(
-          "template<typename T> int foo();"
-              "template <typename T> void declToImport() {"
-              "  ::foo<T>;"
-              "  ::template foo<T>;"
-              "}",
-          Lang_CXX, "", Lang_CXX, Verifier,
-          functionTemplateDecl(
-              has(functionDecl(
-                  has(compoundStmt(has(unresolvedLookupExpr()))))))));
+  EXPECT_TRUE(testImport("template<typename T> int foo();"
+                         "template <typename T> void declToImport() {"
+                         "  ::foo<T>;"
+                         "  ::template foo<T>;"
+                         "}",
+                         Lang_CXX, "", Lang_CXX, Verifier,
+                         functionTemplateDecl(has(functionDecl(has(
+                             compoundStmt(has(unresolvedLookupExpr()))))))));
 }
 
 TEST(ImportExpr, ImportCXXUnresolvedConstructExpr) {
   MatchVerifier<Decl> Verifier;
-  EXPECT_TRUE(testImport("template <typename T> class C { T t; };"
-                             "template <typename T> void declToImport() {"
-                             "C<T> d;"
-                             "d.t = T()"
-                             "}",
-                         Lang_CXX, "", Lang_CXX, Verifier,
-                         functionTemplateDecl(has(functionDecl(has(compoundStmt(has(binaryOperator(
-                             has(cxxUnresolvedConstructExpr()))))))))));
-  EXPECT_TRUE(testImport("template <typename T> class C { T t; };"
-                             "template <typename T> void declToImport() {"
-                             "C<T> d;"
-                             "(&d)->t = T()"
-                             "}",
-                         Lang_CXX, "", Lang_CXX, Verifier,
-                         functionTemplateDecl(has(functionDecl(has(compoundStmt(has(binaryOperator(
-                             has(cxxUnresolvedConstructExpr()))))))))));
+  EXPECT_TRUE(
+      testImport("template <typename T> class C { T t; };"
+                 "template <typename T> void declToImport() {"
+                 "C<T> d;"
+                 "d.t = T()"
+                 "}",
+                 Lang_CXX, "", Lang_CXX, Verifier,
+                 functionTemplateDecl(has(functionDecl(has(compoundStmt(has(
+                     binaryOperator(has(cxxUnresolvedConstructExpr()))))))))));
+  EXPECT_TRUE(
+      testImport("template <typename T> class C { T t; };"
+                 "template <typename T> void declToImport() {"
+                 "C<T> d;"
+                 "(&d)->t = T()"
+                 "}",
+                 Lang_CXX, "", Lang_CXX, Verifier,
+                 functionTemplateDecl(has(functionDecl(has(compoundStmt(has(
+                     binaryOperator(has(cxxUnresolvedConstructExpr()))))))))));
 }
 
 } // end namespace ast_matchers
