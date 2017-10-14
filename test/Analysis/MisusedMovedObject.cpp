@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -analyze -analyzer-checker=alpha.cplusplus.MisusedMovedObject -std=c++11 -verify -analyzer-output=text %s
+// RUN: %clang_cc1 -analyze -analyzer-checker=cplusplus.MisusedMovedObject -std=c++11 -verify -analyzer-output=text %s
 
 namespace std {
 

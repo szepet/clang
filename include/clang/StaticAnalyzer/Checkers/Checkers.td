@@ -272,6 +272,11 @@ def CXXSelfAssignmentChecker : Checker<"SelfAssignment">,
   HelpText<"Checks C++ copy and move assignment operators for self assignment">,
   DescFile<"CXXSelfAssignmentChecker.cpp">;
 
+def MisusedMovedObjectChecker : Checker<"MisusedMovedObject">,
+  HelpText<"Method calls on a moved-from object and copying a moved-from "
+           "object will be reported">,
+  DescFile<"MisusedMovedObjectChecker.cpp">;
+
 } // end: "cplusplus"
 
 let ParentPackage = CplusplusOptIn in {
@@ -292,11 +297,6 @@ def DeleteWithNonVirtualDtorChecker : Checker<"DeleteWithNonVirtualDtor">,
 def IteratorRangeChecker : Checker<"IteratorRange">,
   HelpText<"Check for iterators used outside their valid ranges">,
   DescFile<"IteratorChecker.cpp">;
-
-def MisusedMovedObjectChecker: Checker<"MisusedMovedObject">,
-     HelpText<"Method calls on a moved-from object and copying a moved-from "
-              "object will be reported">,
-     DescFile<"MisusedMovedObjectChecker.cpp">;
 
 } // end: "alpha.cplusplus"
 
