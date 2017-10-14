@@ -389,8 +389,11 @@ void MisusedMovedObjectChecker::checkPreCall(const CallEvent &Call,
     return;
   // In case of destructor call we do not track the object anymore.
   const MemRegion *ThisRegion = IC->getCXXThisVal().getAsRegion();
+  if (!ThisRegion)
+    return;
+
   if (dyn_cast_or_null<CXXDestructorDecl>(Call.getDecl())) {
-    State = removeFromState(State, IC->getCXXThisVal().getAsRegion());
+    State = removeFromState(State, ThisRegion);
     C.addTransition(State);
     return;
   }
