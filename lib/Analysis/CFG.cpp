@@ -22,6 +22,7 @@
 #include "clang/Basic/Builtins.h"
 #include "llvm/ADT/DenseMap.h"
 #include <memory>
+#include <queue>
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Format.h"
@@ -112,7 +113,7 @@ static bool areExprTypesCompatible(const Expr *E1, const Expr *E2) {
 }
 
 class CFGBuilder;
-  
+
 /// The CFG builder uses a recursive algorithm to build the CFG.  When
 ///  we process an expression, sometimes we know that we must add the
 ///  subexpressions as block-level expressions.  For example:
@@ -240,7 +241,7 @@ public:
 
 private:
   BumpVectorContext ctx;
-  
+
   /// Automatic variables in order of declaration.
   AutomaticVarsTy Vars;
   /// Iterator to variable in previous scope that was declared just before
@@ -321,7 +322,7 @@ class TryResult {
 public:
   TryResult(bool b) : X(b ? 1 : 0) {}
   TryResult() : X(-1) {}
-  
+
   bool isTrue() const { return X == 1; }
   bool isFalse() const { return X == 0; }
   bool isKnown() const { return X >= 0; }
@@ -425,11 +426,11 @@ class CFGBuilder {
 
   bool badCFG;
   const CFG::BuildOptions &BuildOpts;
-  
+
   // State to track for building switch statements.
   bool switchExclusivelyCovered;
   Expr::EvalResult *switchCond;
-  
+
   CFG::BuildOptions::ForcedBlkExprs::value_type *cachedEntry;
   const Stmt *lastLookup;
 
@@ -451,7 +452,7 @@ public:
   std::unique_ptr<CFG> buildCFG(const Decl *D, Stmt *Statement);
 
   bool alwaysAdd(const Stmt *stmt);
-  
+
 private:
   // Visitors to walk an AST and construct the CFG.
   CFGBlock *VisitAddrLabelExpr(AddrLabelExpr *A, AddStmtChoice asc);
@@ -610,6 +611,8 @@ private:
   }
   CFGBlock *addInitializer(CXXCtorInitializer *I);
   void addLoopExit(const Stmt *LoopStmt);
+  void addLoopExit(const Stmt* FromStmt, const Stmt *ToStmt);
+
   void addAutomaticObjDtors(LocalScope::const_iterator B,
                             LocalScope::const_iterator E, Stmt *S);
   void addLifetimeEnds(LocalScope::const_iterator B,
@@ -903,7 +906,7 @@ private:
   bool tryEvaluate(Expr *S, Expr::EvalResult &outResult) {
     if (!BuildOpts.PruneTriviallyFalseEdges)
       return false;
-    return !S->isTypeDependent() && 
+    return !S->isTypeDependent() &&
            !S->isValueDependent() &&
            S->EvaluateAsRValue(outResult, *Context);
   }
@@ -1017,18 +1020,18 @@ inline bool AddStmtChoice::alwaysAdd(CFGBuilder &builder,
 
 bool CFGBuilder::alwaysAdd(const Stmt *stmt) {
   bool shouldAdd = BuildOpts.alwaysAdd(stmt);
-  
+
   if (!BuildOpts.forcedBlkExprs)
     return shouldAdd;
 
-  if (lastLookup == stmt) {  
+  if (lastLookup == stmt) {
     if (cachedEntry) {
       assert(cachedEntry->first == stmt);
       return true;
     }
     return shouldAdd;
   }
-  
+
   lastLookup = stmt;
 
   // Perform the lookup!
@@ -1049,7 +1052,7 @@ bool CFGBuilder::alwaysAdd(const Stmt *stmt) {
   cachedEntry = &*itr;
   return true;
 }
-  
+
 // FIXME: Add support for dependent-sized array types in C++?
 // Does it even make sense to build a CFG for an uninstantiated template?
 static const VariableArrayType *FindVA(const Type *t) {
@@ -1131,14 +1134,14 @@ std::unique_ptr<CFG> CFGBuilder::buildCFG(const Decl *D, Stmt *Statement) {
   if (CFGBlock *B = cfg->getIndirectGotoBlock())
     for (LabelSetTy::iterator I = AddressTakenLabels.begin(),
                               E = AddressTakenLabels.end(); I != E; ++I ) {
-      
+
       // Lookup the target block.
       LabelMapTy::iterator LI = LabelMap.find(*I);
 
       // If there is no target block that contains label, then we are looking
       // at an incomplete AST.  Handle this by not registering a successor.
       if (LI == LabelMap.end()) continue;
-      
+
       addSuccessor(B, LI->second.block);
     }
 
@@ -1224,13 +1227,13 @@ static QualType getReferenceInitTemporaryType(ASTContext &Context,
   while (true) {
     // Skip parentheses.
     Init = Init->IgnoreParens();
-    
+
     // Skip through cleanups.
     if (const ExprWithCleanups *EWC = dyn_cast<ExprWithCleanups>(Init)) {
       Init = EWC->getSubExpr();
       continue;
     }
-    
+
     // Skip through the temporary-materialization expression.
     if (const MaterializeTemporaryExpr *MTE
           = dyn_cast<MaterializeTemporaryExpr>(Init)) {
@@ -1239,7 +1242,7 @@ static QualType getReferenceInitTemporaryType(ASTContext &Context,
         *FoundMTE = true;
       continue;
     }
-    
+
     // Skip derived-to-base and no-op casts.
     if (const CastExpr *CE = dyn_cast<CastExpr>(Init)) {
       if ((CE->getCastKind() == CK_DerivedToBase ||
@@ -1250,7 +1253,7 @@ static QualType getReferenceInitTemporaryType(ASTContext &Context,
         continue;
       }
     }
-    
+
     // Skip member accesses into rvalues.
     if (const MemberExpr *ME = dyn_cast<MemberExpr>(Init)) {
       if (!ME->isArrow() && ME->getBase()->isRValue()) {
@@ -1258,7 +1261,7 @@ static QualType getReferenceInitTemporaryType(ASTContext &Context,
         continue;
       }
     }
-    
+
     break;
   }
 
@@ -1273,6 +1276,80 @@ void CFGBuilder::addLoopExit(const Stmt *LoopStmt){
     return;
   autoCreateBlock();
   appendLoopExit(Block, LoopStmt);
+}
+
+
+/*class ContainingLoopCollector : public ConstStmtVisitor<ContainingLoopCollector>
+{
+private:
+  ASTContext& ASTCtx;
+  llvm::SmallPtrSet<const Stmt*, 4>& LoopStmts;
+public:
+  ContainingLoopCollector(const Stmt* S, ASTContext& ASTCtx,
+                          llvm::SmallPtrSet<const Stmt*, 4> LoopStmts):
+      ASTCtx(ASTCtx),LoopStmts(LoopStmts){
+    Visit(S);
+  }
+  void VisitStmt(const Stmt* S){
+    if(!S)
+      return;
+    if(isa<ForStmt>(S) || isa<WhileStmt>(S) || isa<DoStmt>(S))
+      LoopStmts.insert(S);
+
+    for(ast_type_traits::DynTypedNode Parent : ASTCtx.getParents(S)){
+      Visit(Parent.get<Stmt>());
+    }
+  }
+
+};*/
+
+llvm::SmallSetVector<const Stmt*, 4> collectContainingLoops(const Stmt* S, ASTContext& ASTCtx) {
+  llvm::SmallSetVector<const Stmt*, 4> LoopStmts;
+  std::queue<ast_type_traits::DynTypedNode> NodesToVisit;
+  NodesToVisit.push(ast_type_traits::DynTypedNode::create(*S));
+
+  while (!NodesToVisit.empty()) {
+    ast_type_traits::DynTypedNode Node = NodesToVisit.front();
+    NodesToVisit.pop();
+
+    for (auto &Parent : ASTCtx.getParents(Node)) {
+      NodesToVisit.push(Parent);
+    }
+
+    const Stmt *LoopStmt = Node.get<Stmt>();
+    if (LoopStmt && (isa<ForStmt>(LoopStmt) || isa<WhileStmt>(LoopStmt) ||
+                     isa<DoStmt>(LoopStmt)))
+      LoopStmts.insert(LoopStmt);
+  }
+  return LoopStmts;
+}
+
+/*void CFGBuilder::addLoopExit(const ReturnStmt *RS){
+  if(!BuildOpts.AddLoopExit)
+    return;
+
+  llvm::SmallSetVector<const Stmt*, 4> LoopStmts =
+      collectContainingLoops(RS, *Context);
+
+  for (llvm::SmallSetVector<const Stmt *, 4>::reverse_iterator I = LoopStmts.rbegin(),
+           E = LoopStmts.rend(); I!= E; ++I)
+    appendLoopExit(Block, *I);
+}
+*/
+void CFGBuilder::addLoopExit(const Stmt* FromStmt, const Stmt *ToStmt) {
+  if(!BuildOpts.AddLoopExit)
+    return;
+
+  llvm::SmallSetVector<const Stmt*, 4> GotoLoopStmts =
+      collectContainingLoops(GS, *Context);
+
+  llvm::SmallSetVector<const Stmt*, 4> LabelLoopStmts =
+      collectContainingLoops(LS, *Context);
+
+  GotoLoopStmts.set_subtract(LabelLoopStmts);
+  for (llvm::SmallSetVector<const Stmt *, 4>::reverse_iterator I = GotoLoopStmts.rbegin(),
+           E = GotoLoopStmts.rend(); I!= E; ++I)
+    appendLoopExit(Block, *I);
 }
 
 void CFGBuilder::addAutomaticObjHandling(LocalScope::const_iterator B,
@@ -2470,7 +2547,7 @@ CFGBlock *CFGBuilder::VisitReturnStmt(ReturnStmt *R) {
   Block = createBlock(false);
 
   addAutomaticObjHandling(ScopePos, LocalScope::const_iterator(), R);
-
+  addLoopExit(R);
   // If the one of the destructors does not return, we already have the Exit
   // block as a successor.
   if (!Block->hasNoReturnElement())
@@ -2664,6 +2741,8 @@ CFGBlock *CFGBuilder::VisitGotoStmt(GotoStmt *G) {
     addAutomaticObjHandling(ScopePos, JT.scopePosition, G);
     addSuccessor(Block, JT.block);
   }
+  addLoopExit(G,G->getLabel()->getStmt());
+
 
   return Block;
 }
@@ -3181,10 +3260,11 @@ CFGBlock *CFGBuilder::VisitCXXThrowExpr(CXXThrowExpr *T) {
   if (TryTerminatedBlock)
     // The current try statement is the only successor.
     addSuccessor(Block, TryTerminatedBlock);
+    addLoopExit(T,TryTerminatedBlock->getTerminator().getStmt());
   else
     // otherwise the Exit block is the only successor.
     addSuccessor(Block, &cfg->getExit());
-
+    addLoopExit(T,nullptr);
   // Add the statement to the block.  This may create new blocks if S contains
   // control-flow (short-circuit operations).
   return VisitStmt(T, AddStmtChoice::AlwaysAdd);
