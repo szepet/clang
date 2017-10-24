@@ -1305,6 +1305,10 @@ public:
 
 llvm::SmallSetVector<const Stmt*, 4> collectContainingLoops(const Stmt* S, ASTContext& ASTCtx) {
   llvm::SmallSetVector<const Stmt*, 4> LoopStmts;
+
+  if(!S)
+    return LoopStmts;
+
   std::queue<ast_type_traits::DynTypedNode> NodesToVisit;
   NodesToVisit.push(ast_type_traits::DynTypedNode::create(*S));
 
@@ -1340,15 +1344,15 @@ void CFGBuilder::addLoopExit(const Stmt* FromStmt, const Stmt *ToStmt) {
   if(!BuildOpts.AddLoopExit)
     return;
 
-  llvm::SmallSetVector<const Stmt*, 4> GotoLoopStmts =
-      collectContainingLoops(GS, *Context);
+  llvm::SmallSetVector<const Stmt*, 4> FromLoopStmts =
+      collectContainingLoops(FromStmt, *Context);
 
-  llvm::SmallSetVector<const Stmt*, 4> LabelLoopStmts =
-      collectContainingLoops(LS, *Context);
+  llvm::SmallSetVector<const Stmt*, 4> ToLoopStmts =
+      collectContainingLoops(ToStmt, *Context);
 
-  GotoLoopStmts.set_subtract(LabelLoopStmts);
-  for (llvm::SmallSetVector<const Stmt *, 4>::reverse_iterator I = GotoLoopStmts.rbegin(),
-           E = GotoLoopStmts.rend(); I!= E; ++I)
+  FromLoopStmts.set_subtract(ToLoopStmts);
+  for (llvm::SmallSetVector<const Stmt *, 4>::reverse_iterator I = FromLoopStmts.rbegin(),
+           E = FromLoopStmts.rend(); I!= E; ++I)
     appendLoopExit(Block, *I);
 }
 
@@ -2547,7 +2551,7 @@ CFGBlock *CFGBuilder::VisitReturnStmt(ReturnStmt *R) {
   Block = createBlock(false);
 
   addAutomaticObjHandling(ScopePos, LocalScope::const_iterator(), R);
-  addLoopExit(R);
+  addLoopExit(R,nullptr);
   // If the one of the destructors does not return, we already have the Exit
   // block as a successor.
   if (!Block->hasNoReturnElement())
@@ -3257,14 +3261,16 @@ CFGBlock *CFGBuilder::VisitCXXThrowExpr(CXXThrowExpr *T) {
   // Create the new block.
   Block = createBlock(false);
 
-  if (TryTerminatedBlock)
+  if (TryTerminatedBlock) {
     // The current try statement is the only successor.
     addSuccessor(Block, TryTerminatedBlock);
-    addLoopExit(T,TryTerminatedBlock->getTerminator().getStmt());
-  else
+    addLoopExit(T, TryTerminatedBlock->getTerminator().getStmt());
+  }
+  else {
     // otherwise the Exit block is the only successor.
     addSuccessor(Block, &cfg->getExit());
-    addLoopExit(T,nullptr);
+    addLoopExit(T, nullptr);
+  }
   // Add the statement to the block.  This may create new blocks if S contains
   // control-flow (short-circuit operations).
   return VisitStmt(T, AddStmtChoice::AlwaysAdd);
