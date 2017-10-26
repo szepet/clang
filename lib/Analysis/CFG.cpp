@@ -21,13 +21,13 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/Builtins.h"
 #include "llvm/ADT/DenseMap.h"
-#include <memory>
-#include <queue>
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/SaveAndRestore.h"
+#include <memory>
+#include <queue>
 
 using namespace clang;
 
@@ -611,7 +611,7 @@ private:
   }
   CFGBlock *addInitializer(CXXCtorInitializer *I);
   void addLoopExit(const Stmt *LoopStmt);
-  void addLoopExit(const Stmt* FromStmt, const Stmt *ToStmt);
+  void addLoopExit(const Stmt *FromStmt, const Stmt *ToStmt);
 
   void addAutomaticObjDtors(LocalScope::const_iterator B,
                             LocalScope::const_iterator E, Stmt *S);
@@ -1278,8 +1278,8 @@ void CFGBuilder::addLoopExit(const Stmt *LoopStmt){
   appendLoopExit(Block, LoopStmt);
 }
 
-
-/*class ContainingLoopCollector : public ConstStmtVisitor<ContainingLoopCollector>
+/*class ContainingLoopCollector : public
+ConstStmtVisitor<ContainingLoopCollector>
 {
 private:
   ASTContext& ASTCtx;
@@ -1303,10 +1303,11 @@ public:
 
 };*/
 
-llvm::SmallSetVector<const Stmt*, 4> collectContainingLoops(const Stmt* S, ASTContext& ASTCtx) {
-  llvm::SmallSetVector<const Stmt*, 4> LoopStmts;
+llvm::SmallSetVector<const Stmt *, 4>
+collectContainingLoops(const Stmt *S, ASTContext &ASTCtx) {
+  llvm::SmallSetVector<const Stmt *, 4> LoopStmts;
 
-  if(!S)
+  if (!S)
     return LoopStmts;
 
   std::queue<ast_type_traits::DynTypedNode> NodesToVisit;
@@ -1335,24 +1336,25 @@ llvm::SmallSetVector<const Stmt*, 4> collectContainingLoops(const Stmt* S, ASTCo
   llvm::SmallSetVector<const Stmt*, 4> LoopStmts =
       collectContainingLoops(RS, *Context);
 
-  for (llvm::SmallSetVector<const Stmt *, 4>::reverse_iterator I = LoopStmts.rbegin(),
-           E = LoopStmts.rend(); I!= E; ++I)
-    appendLoopExit(Block, *I);
+  for (llvm::SmallSetVector<const Stmt *, 4>::reverse_iterator I =
+LoopStmts.rbegin(), E = LoopStmts.rend(); I!= E; ++I) appendLoopExit(Block, *I);
 }
 */
-void CFGBuilder::addLoopExit(const Stmt* FromStmt, const Stmt *ToStmt) {
-  if(!BuildOpts.AddLoopExit)
+void CFGBuilder::addLoopExit(const Stmt *FromStmt, const Stmt *ToStmt) {
+  if (!BuildOpts.AddLoopExit)
     return;
 
-  llvm::SmallSetVector<const Stmt*, 4> FromLoopStmts =
+  llvm::SmallSetVector<const Stmt *, 4> FromLoopStmts =
       collectContainingLoops(FromStmt, *Context);
 
-  llvm::SmallSetVector<const Stmt*, 4> ToLoopStmts =
+  llvm::SmallSetVector<const Stmt *, 4> ToLoopStmts =
       collectContainingLoops(ToStmt, *Context);
 
   FromLoopStmts.set_subtract(ToLoopStmts);
-  for (llvm::SmallSetVector<const Stmt *, 4>::reverse_iterator I = FromLoopStmts.rbegin(),
-           E = FromLoopStmts.rend(); I!= E; ++I)
+  for (llvm::SmallSetVector<const Stmt *, 4>::reverse_iterator
+           I = FromLoopStmts.rbegin(),
+           E = FromLoopStmts.rend();
+       I != E; ++I)
     appendLoopExit(Block, *I);
 }
 
@@ -2551,7 +2553,7 @@ CFGBlock *CFGBuilder::VisitReturnStmt(ReturnStmt *R) {
   Block = createBlock(false);
 
   addAutomaticObjHandling(ScopePos, LocalScope::const_iterator(), R);
-  addLoopExit(R,nullptr);
+  addLoopExit(R, nullptr);
   // If the one of the destructors does not return, we already have the Exit
   // block as a successor.
   if (!Block->hasNoReturnElement())
@@ -2745,8 +2747,7 @@ CFGBlock *CFGBuilder::VisitGotoStmt(GotoStmt *G) {
     addAutomaticObjHandling(ScopePos, JT.scopePosition, G);
     addSuccessor(Block, JT.block);
   }
-  addLoopExit(G,G->getLabel()->getStmt());
-
+  addLoopExit(G, G->getLabel()->getStmt());
 
   return Block;
 }
@@ -3266,8 +3267,7 @@ CFGBlock *CFGBuilder::VisitCXXThrowExpr(CXXThrowExpr *T) {
     // The current try statement is the only successor.
     addSuccessor(Block, TryTerminatedBlock);
     addLoopExit(T, TryTerminatedBlock->getTerminator().getStmt());
-  }
-  else {
+  } else {
     // otherwise the Exit block is the only successor.
     addSuccessor(Block, &cfg->getExit());
     addLoopExit(T, nullptr);
