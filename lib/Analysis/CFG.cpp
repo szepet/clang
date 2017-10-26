@@ -3247,6 +3247,7 @@ CFGBlock *CFGBuilder::VisitObjCAtThrowStmt(ObjCAtThrowStmt *S) {
 
   // The Exit block is the only successor.
   addSuccessor(Block, &cfg->getExit());
+  addLoopExit(S, nullptr);
 
   // Add the statement to the block.  This may create new blocks if S contains
   // control-flow (short-circuit operations).
