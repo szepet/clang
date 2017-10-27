@@ -4002,6 +4002,7 @@ CFGBlock *CFGBuilder::VisitIndirectGotoStmt(IndirectGotoStmt *I) {
   Block = createBlock(false);
   Block->setTerminator(I);
   addSuccessor(Block, IBlock);
+  addLoopExit(I, nullptr);
   return addStmt(I->getTarget());
 }
 
