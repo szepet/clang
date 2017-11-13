@@ -1212,22 +1212,22 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
 
   if (D1->getDescribedFunctionTemplate()) {
     if (D2->getDescribedFunctionTemplate()) {
-      if (Context.IsStructurallyEquivalent(D1->getDescribedFunctionTemplate(),
-                                           D2->getDescribedFunctionTemplate()))
+      if (!Context.IsStructurallyEquivalent(D1->getDescribedFunctionTemplate(),
+                                            D2->getDescribedFunctionTemplate()))
         return false;
     } else {
       return false;
     }
   }
-
+  
   return true;
 }
 
 static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
                                      FunctionTemplateDecl *D1,
                                      FunctionTemplateDecl *D2) {
-  if (Context.IsStructurallyEquivalent(D1->getTemplatedDecl(),
-                                       D2->getTemplatedDecl()))
+  if (!Context.IsStructurallyEquivalent(D1->getTemplatedDecl(),
+                                        D2->getTemplatedDecl()))
     return false;
 
   // Check the template parameter list.
@@ -1238,7 +1238,7 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
                                   TP2End = TParams2->end();
   for (TemplateParameterList::iterator TP1 = TParams1->begin(),
                                        TP1End = TParams1->end();
-       TP1 != TP1End; ++TP1, ++TP1) {
+       TP1 != TP1End; ++TP1, ++TP2) {
     if (TP2 == TP2End)
       return false;
 
