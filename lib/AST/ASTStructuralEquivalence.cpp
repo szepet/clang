@@ -1207,10 +1207,9 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
 
 static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
                                      FunctionDecl *D1, FunctionDecl *D2) {
-  llvm::errs() << "DUDE2\n";
   if (!::IsStructurallyEquivalent(Context, D1->getType(), D2->getType()))
     return false;
-  llvm::errs() << "DUDE3\n";
+
   if(D1->getDescribedFunctionTemplate()) {
     if (D2->getDescribedFunctionTemplate()) {
       if (Context.IsStructurallyEquivalent(D1->getDescribedFunctionTemplate(),
@@ -1359,9 +1358,7 @@ bool StructuralEquivalenceContext::Finish() {
     // Check the next declaration.
     Decl *D1 = DeclsToCheck.front();
     DeclsToCheck.pop_front();
-    llvm::errs() << "DUDE\n";
-    llvm::errs() << D1 << "\n";
-    D1->dump();
+
     Decl *D2 = TentativeEquivalences[D1];
     assert(D2 && "Unrecorded tentative equivalence?");
 
@@ -1485,7 +1482,6 @@ bool StructuralEquivalenceContext::Finish() {
         Equivalent = false;
       }
     }
-    llvm::errs() << "DUDE4\n";
     if (!Equivalent) {
       // Note that these two declarations are not equivalent (and we already
       // know about it).
@@ -1495,7 +1491,6 @@ bool StructuralEquivalenceContext::Finish() {
     }
     // FIXME: Check other declaration kinds!
   }
-  llvm::errs() << "DUDE5\n";
   return false;
 }
 } // namespace clang

@@ -108,16 +108,11 @@ struct PES {
 
 int fun_using_pack_expansion() { return PES<int>::i;}
 
-namespace cv {
-template<typename T>
 struct Ptr
 {
-
     template<typename Y>
     int a() { return 1; }
 
     template<typename Y, typename D>
     int a() { return 2; }
-
 };
-}

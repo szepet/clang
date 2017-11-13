@@ -1003,28 +1003,14 @@ void ASTNodeImporter::ImportDeclContext(DeclContext *FromDC, bool ForceImport,
     Importer.ImportContext(FromDC);
     return;
   }
-  llvm::errs() << "FROM:\n";
   llvm::SmallVector<Decl*, 8> Decls;
-  for (auto *From : FromDC->decls()) {
+  for (auto *From : FromDC->decls())
     Decls.push_back(Importer.Import(From));
-    llvm::errs() << From << "\n";
-    From->dump();
-  }
   if (ToDC) {
     // Restore the order.
-    llvm::errs() << "TO:\n";
-    for (auto *D : Decls){
-      llvm::errs() << D << "\n";
-      D->dump();
-    }
-
-    llvm::errs() << "NONNULL+DC:\n";
     for (auto *D : Decls) {
-      if (D && D->getLexicalDeclContext() == ToDC) {
-
-        llvm::errs() << D << "\n";
+      if (D && D->getLexicalDeclContext() == ToDC)
         ToDC->removeDecl(D);
-      }
     }
     for (auto *D : Decls) {
       if (D && D->getLexicalDeclContext() == ToDC)
@@ -4365,7 +4351,6 @@ Decl *ASTNodeImporter::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
           if (IsStructuralMatch(D, FoundFunction)) {
             Importer.Imported(D, FoundFunction);
             // FIXME: Actually try to merge the body and other attributes.
-            llvm::errs() << "It just happened! " << D << FoundFunction << "\n";
             return FoundFunction;
           }
         }
@@ -5890,23 +5875,16 @@ Expr *ASTNodeImporter::VisitExprWithCleanups(ExprWithCleanups *EWC) {
 
 Expr *ASTNodeImporter::VisitCXXMemberCallExpr(CXXMemberCallExpr *E) {
   QualType T = Importer.Import(E->getType());
-  if (T.isNull()) {
-    llvm::errs() << "HIBA1\n";
+  if (T.isNull())
     return nullptr;
-  }
 
   Expr *ToFn = Importer.Import(E->getCallee());
-  if (!ToFn) {
-    E->getCallee()->dump();
-    llvm::errs() << "HIBA2\n";
+  if (!ToFn)
     return nullptr;
-  }
 
   SmallVector<Expr *, 4> ToArgs(E->getNumArgs());
-  if (ImportContainerChecked(E->arguments(), ToArgs)) {
-    llvm::errs() << "HIBA3\n";
+  if (ImportContainerChecked(E->arguments(), ToArgs))
     return nullptr;
-  }
 
   return new (Importer.getToContext()) CXXMemberCallExpr(
         Importer.getToContext(), ToFn, ToArgs, T, E->getValueKind(),
@@ -5934,23 +5912,17 @@ Expr *ASTNodeImporter::VisitCXXBoolLiteralExpr(CXXBoolLiteralExpr *E) {
 
 Expr *ASTNodeImporter::VisitMemberExpr(MemberExpr *E) {
   QualType T = Importer.Import(E->getType());
-  if (T.isNull()) {
-    llvm::errs() << "ERR1\n";
+  if (T.isNull())
     return nullptr;
-  }
 
   Expr *ToBase = Importer.Import(E->getBase());
-  if (!ToBase && E->getBase()){
-    llvm::errs() << "ERR2\n";
+  if (!ToBase && E->getBase())
     return nullptr;
-  }
 
   ValueDecl *ToMember = 
     dyn_cast_or_null<ValueDecl>(Importer.Import(E->getMemberDecl()));
-  if (!ToMember && E->getMemberDecl()){
-    llvm::errs() << "ERR3\n";
+  if (!ToMember && E->getMemberDecl())
     return nullptr;
-  }
 
   DeclAccessPair ToFoundDecl = DeclAccessPair::make(
     dyn_cast<NamedDecl>(Importer.Import(E->getFoundDecl().getDecl())),
@@ -5967,7 +5939,6 @@ Expr *ASTNodeImporter::VisitMemberExpr(MemberExpr *E) {
     for (const auto &FromLoc : E->template_arguments()) {
       if (auto ToTALoc = ImportTemplateArgumentLoc(FromLoc)) {
         ToTAInfo.addArgument(*ToTALoc);
-        llvm::errs() << ToTALoc->getArgument().getAsType().getAsString() <<"  DUUUUUDE\n";
       }
       else
         return nullptr;
@@ -5975,7 +5946,7 @@ Expr *ASTNodeImporter::VisitMemberExpr(MemberExpr *E) {
     ResInfo = &ToTAInfo;
   }
 
-  auto ToMemberExpr = MemberExpr::Create(Importer.getToContext(), ToBase,
+  return MemberExpr::Create(Importer.getToContext(), ToBase,
                             E->isArrow(),
                             Importer.Import(E->getOperatorLoc()),
                             Importer.Import(E->getQualifierLoc()),
@@ -5983,12 +5954,6 @@ Expr *ASTNodeImporter::VisitMemberExpr(MemberExpr *E) {
                             ToMember, ToFoundDecl, ToMemberNameInfo,
                             ResInfo, T, E->getValueKind(),
                             E->getObjectKind());
-  llvm::errs() << "PREEEEEEEEEEEEEEEEETYPRINT\n";
-  ToMemberExpr->printPretty(llvm::errs(), nullptr, PrintingPolicy(LangOptions()));
-  llvm::errs() << "\nPREEEEEEEEEEEEEEEEETYPRINT\n";
-  llvm::errs() << ToMemberExpr->hasExplicitTemplateArgs() << "\n";
-
-  return ToMemberExpr;
 }
 
 Expr *ASTNodeImporter::VisitCXXDependentScopeMemberExpr(
@@ -6790,10 +6755,8 @@ TemplateName ASTImporter::Import(TemplateName From) {
 }
 
 SourceLocation ASTImporter::Import(SourceLocation FromLoc) {
-  if (FromLoc.isInvalid()) {
-    llvm::errs() << "SADFACE00:(\n";
+  if (FromLoc.isInvalid())
     return SourceLocation();
-  }
   SourceManager &FromSM = FromContext.getSourceManager();
   
   // For now, map everything down to its file location, so that we
@@ -6806,14 +6769,11 @@ SourceLocation ASTImporter::Import(SourceLocation FromLoc) {
   std::pair<FileID, unsigned> Decomposed = FromSM.getDecomposedLoc(FromLoc);
   SourceManager &ToSM = ToContext.getSourceManager();
   FileID ToFileID = Import(Decomposed.first);
-  if (ToFileID.isInvalid()) {
-    llvm::errs() << "SADFACE:(\n";
+  if (ToFileID.isInvalid())
     return SourceLocation();
-  }
+
   SourceLocation ret = ToSM.getLocForStartOfFile(ToFileID)
                            .getLocWithOffset(Decomposed.second);
-  if(ret.isInvalid())
-    llvm::errs() << "SADFACE222:(\n";
   return ret;
 }
 
