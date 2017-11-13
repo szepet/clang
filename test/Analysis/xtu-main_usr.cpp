@@ -44,6 +44,11 @@ public:
 namespace chns {
 int chf1(int x);
 }
+
+namespace cv {
+template<typename T>
+struct Ptr;
+}
 //test for a crash
 //when inlining typedefs
 typedef struct AVBuffer avt;
@@ -76,4 +81,8 @@ int main() {
 
   clang_analyzer_eval(fun_using_type_alias_template() == 3); // expected-warning{{TRUE}}
   clang_analyzer_eval(fun_using_pack_expansion() == 4); // expected-warning{{TRUE}}
+
+  cv::Ptr<void> p;
+  clang_analyzer_eval(p.a<void>() == 1);       // expected-warning{{TRUE}}
+  clang_analyzer_eval(p.a<void, void>() == 2); // expected-warning{{TRUE}}
 }
