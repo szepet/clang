@@ -4331,8 +4331,8 @@ Decl *ASTNodeImporter::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
   if (ToD)
       return ToD;
 
-  FunctionDecl *TemplatedFD = cast_or_null<FunctionDecl>(
-          Importer.Import(D->getTemplatedDecl()));
+  FunctionDecl *TemplatedFD =
+      cast_or_null<FunctionDecl>(Importer.Import(D->getTemplatedDecl()));
   if (!TemplatedFD)
     return nullptr;
 
@@ -4994,7 +4994,6 @@ Expr *ASTNodeImporter::VisitDeclRefExpr(DeclRefExpr *E) {
   QualType T = Importer.Import(E->getType());
   if (T.isNull())
     return nullptr;
-
 
   TemplateArgumentListInfo ToTAInfo(Importer.Import(E->getLAngleLoc()),
                                     Importer.Import(E->getRAngleLoc()));

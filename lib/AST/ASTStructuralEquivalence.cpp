@@ -1219,7 +1219,7 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
       return false;
     }
   }
-  
+
   return true;
 }
 
