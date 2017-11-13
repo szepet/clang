@@ -45,13 +45,12 @@ namespace chns {
 int chf1(int x);
 }
 
-struct Ptr
-{
-    template<typename Y>
-    int a();
+struct Ptr {
+  template <typename Y>
+  int a();
 
-    template<typename Y, typename D>
-    int a();
+  template <typename Y, typename D>
+  int a();
 };
 
 //test for a crash
@@ -91,4 +90,4 @@ int main() {
   Ptr p;
   clang_analyzer_eval(p.a<void>() == 1);       // expected-warning{{UNKNOWN}}
   clang_analyzer_eval(p.a<void, void>() == 2); // expected-warning{{UNKNOWN}}
- }
+}

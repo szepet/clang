@@ -1358,12 +1358,10 @@ bool ASTNodeImporter::IsStructuralMatch(FunctionTemplateDecl *From,
   return Ctx.IsStructurallyEquivalent(From, To);
 }
 
-bool ASTNodeImporter::IsStructuralMatch(FunctionDecl *From,
-                                        FunctionDecl *To) {
-  StructuralEquivalenceContext Ctx(Importer.getFromContext(),
-                                   Importer.getToContext(),
-                                   Importer.getNonEquivalentDecls(),
-                                   false, false);
+bool ASTNodeImporter::IsStructuralMatch(FunctionDecl *From, FunctionDecl *To) {
+  StructuralEquivalenceContext Ctx(
+      Importer.getFromContext(), Importer.getToContext(),
+      Importer.getNonEquivalentDecls(), false, false);
   return Ctx.IsStructurallyEquivalent(From, To);
 }
 
@@ -2324,13 +2322,12 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
   }
 
   // Import the describing template function, if any.
-  if(FunctionTemplateDecl *FromFT = D->getDescribedFunctionTemplate())
+  if (FunctionTemplateDecl *FromFT = D->getDescribedFunctionTemplate())
     if (auto *ToFT = dyn_cast<FunctionTemplateDecl>(Importer.Import(FromFT))) {
       ToFunction->setDescribedFunctionTemplate(ToFT);
     }
 
   // Import the body, if any.
-
   if (Stmt *FromBody = D->getBody()) {
     if (Stmt *ToBody = Importer.Import(FromBody)) {
       ToFunction->setBody(ToBody);
@@ -5877,11 +5874,11 @@ Expr *ASTNodeImporter::VisitCXXMemberCallExpr(CXXMemberCallExpr *E) {
   QualType T = Importer.Import(E->getType());
   if (T.isNull())
     return nullptr;
-
+  
   Expr *ToFn = Importer.Import(E->getCallee());
   if (!ToFn)
     return nullptr;
-
+  
   SmallVector<Expr *, 4> ToArgs(E->getNumArgs());
   if (ImportContainerChecked(E->arguments(), ToArgs))
     return nullptr;
@@ -5939,21 +5936,18 @@ Expr *ASTNodeImporter::VisitMemberExpr(MemberExpr *E) {
     for (const auto &FromLoc : E->template_arguments()) {
       if (auto ToTALoc = ImportTemplateArgumentLoc(FromLoc)) {
         ToTAInfo.addArgument(*ToTALoc);
-      }
-      else
+      } else
         return nullptr;
     }
     ResInfo = &ToTAInfo;
   }
 
-  return MemberExpr::Create(Importer.getToContext(), ToBase,
-                            E->isArrow(),
+  return MemberExpr::Create(Importer.getToContext(), ToBase, E->isArrow(),
                             Importer.Import(E->getOperatorLoc()),
                             Importer.Import(E->getQualifierLoc()),
                             Importer.Import(E->getTemplateKeywordLoc()),
-                            ToMember, ToFoundDecl, ToMemberNameInfo,
-                            ResInfo, T, E->getValueKind(),
-                            E->getObjectKind());
+                            ToMember, ToFoundDecl, ToMemberNameInfo, ResInfo, T,
+                            E->getValueKind(), E->getObjectKind());
 }
 
 Expr *ASTNodeImporter::VisitCXXDependentScopeMemberExpr(
@@ -6757,6 +6751,7 @@ TemplateName ASTImporter::Import(TemplateName From) {
 SourceLocation ASTImporter::Import(SourceLocation FromLoc) {
   if (FromLoc.isInvalid())
     return SourceLocation();
+
   SourceManager &FromSM = FromContext.getSourceManager();
   
   // For now, map everything down to its file location, so that we
@@ -6771,7 +6766,6 @@ SourceLocation ASTImporter::Import(SourceLocation FromLoc) {
   FileID ToFileID = Import(Decomposed.first);
   if (ToFileID.isInvalid())
     return SourceLocation();
-
   SourceLocation ret = ToSM.getLocForStartOfFile(ToFileID)
                            .getLocWithOffset(Decomposed.second);
   return ret;

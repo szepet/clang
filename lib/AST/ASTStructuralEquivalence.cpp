@@ -1210,7 +1210,7 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   if (!::IsStructurallyEquivalent(Context, D1->getType(), D2->getType()))
     return false;
 
-  if(D1->getDescribedFunctionTemplate()) {
+  if (D1->getDescribedFunctionTemplate()) {
     if (D2->getDescribedFunctionTemplate()) {
       if (Context.IsStructurallyEquivalent(D1->getDescribedFunctionTemplate(),
                                            D2->getDescribedFunctionTemplate()))
@@ -1227,7 +1227,7 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
                                      FunctionTemplateDecl *D1,
                                      FunctionTemplateDecl *D2) {
   if (Context.IsStructurallyEquivalent(D1->getTemplatedDecl(),
-                                  D2->getTemplatedDecl()))
+                                       D2->getTemplatedDecl()))
     return false;
 
   // Check the template parameter list.
@@ -1235,9 +1235,10 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   TemplateParameterList *TParams2 = D2->getTemplateParameters();
 
   TemplateParameterList::iterator TP2 = TParams2->begin(),
-          TP2End = TParams2->end();
+                                  TP2End = TParams2->end();
   for (TemplateParameterList::iterator TP1 = TParams1->begin(),
-               TP1End = TParams1->end(); TP1 != TP1End; ++TP1, ++TP1) {
+                                       TP1End = TParams1->end();
+       TP1 != TP1End; ++TP1, ++TP1) {
     if (TP2 == TP2End)
       return false;
 
@@ -1482,6 +1483,7 @@ bool StructuralEquivalenceContext::Finish() {
         Equivalent = false;
       }
     }
+
     if (!Equivalent) {
       // Note that these two declarations are not equivalent (and we already
       // know about it).
@@ -1491,6 +1493,7 @@ bool StructuralEquivalenceContext::Finish() {
     }
     // FIXME: Check other declaration kinds!
   }
+
   return false;
 }
 } // namespace clang
