@@ -525,6 +525,35 @@ TEST(ImportType, ImportPackExpansion) {
                                          declRefExpr()))))))))));
 }
 
+TEST(ImportDecl, ImportFunctionTemplateDecl) {
+  MatchVerifier<Decl> Verifier;
+  EXPECT_TRUE(testImport("template <typename T> void declToImport() { };",
+                         Lang_CXX, "", Lang_CXX, Verifier,
+                         functionTemplateDecl()));
+}
+
+const internal::VariadicDynCastAllOfMatcher<Expr, CXXDependentScopeMemberExpr>
+    cxxDependentScopeMemberExpr;
+
+TEST(ImportExpr, ImportCXXDependentScopeMemberExpr) {
+  MatchVerifier<Decl> Verifier;
+  EXPECT_TRUE(testImport("template <typename T> class C { T t; };"
+                         "template <typename T> void declToImport() {"
+                         "  C<T> d;"
+                         "  d.t;"
+                         "}",
+                         Lang_CXX, "", Lang_CXX, Verifier,
+                         functionTemplateDecl(has(functionDecl(has(compoundStmt(
+                             has(cxxDependentScopeMemberExpr()))))))));
+  EXPECT_TRUE(testImport("template <typename T> class C { T t; };"
+                         "template <typename T> void declToImport() {"
+                         "  C<T> d;"
+                         "  (&d)->t;"
+                         "}",
+                         Lang_CXX, "", Lang_CXX, Verifier,
+                         functionTemplateDecl(has(functionDecl(has(compoundStmt(
+                             has(cxxDependentScopeMemberExpr()))))))));
+}
 
 } // end namespace ast_matchers
 } // end namespace clang
