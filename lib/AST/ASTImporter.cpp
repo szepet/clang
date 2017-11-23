@@ -134,7 +134,7 @@ namespace clang {
     bool ImportTemplateArguments(const TemplateArgument *FromArgs,
                                  unsigned NumFromArgs,
                                SmallVectorImpl<TemplateArgument> &ToArgs);
-    template<typename InContainerTy>
+    template <typename InContainerTy>
     bool ImportTemplateArgumentListInfo(const InContainerTy &Container,
                                         TemplateArgumentListInfo &ToTAInfo);
     bool IsStructuralMatch(RecordDecl *FromRecord, RecordDecl *ToRecord,
@@ -1252,9 +1252,9 @@ bool ASTNodeImporter::ImportTemplateArguments(const TemplateArgument *FromArgs,
   return false;
 }
 
-template<typename InContainerTy>
-bool ASTNodeImporter::ImportTemplateArgumentListInfo(const InContainerTy &Container,
-                                    TemplateArgumentListInfo &ToTAInfo) {
+template <typename InContainerTy>
+bool ASTNodeImporter::ImportTemplateArgumentListInfo(
+    const InContainerTy &Container, TemplateArgumentListInfo &ToTAInfo) {
   for (const auto &FromLoc : Container) {
     if (auto ToLoc = ImportTemplateArgumentLoc(FromLoc))
       ToTAInfo.addArgument(*ToLoc);
@@ -5811,7 +5811,7 @@ Expr *ASTNodeImporter::VisitMemberExpr(MemberExpr *E) {
 
 Expr *ASTNodeImporter::VisitCXXDependentScopeMemberExpr(
     CXXDependentScopeMemberExpr *E) {
-  Expr* Base = nullptr;
+  Expr *Base = nullptr;
   if (!E->isImplicitAccess()) {
     Base = Importer.Import(E->getBase());
     if (!Base)
@@ -5825,7 +5825,7 @@ Expr *ASTNodeImporter::VisitCXXDependentScopeMemberExpr(
   TemplateArgumentListInfo ToTAInfo(Importer.Import(E->getLAngleLoc()),
                                     Importer.Import(E->getRAngleLoc()));
   if (ImportTemplateArgumentListInfo(E->template_arguments(), ToTAInfo))
-   return nullptr;
+    return nullptr;
 
   DeclarationName Name = Importer.Import(E->getMember());
   if (E->getMember().isEmpty() && Name.isEmpty())
@@ -5842,8 +5842,8 @@ Expr *ASTNodeImporter::VisitCXXDependentScopeMemberExpr(
       Importer.getToContext(), Base, BaseType, E->isArrow(),
       Importer.Import(E->getOperatorLoc()),
       Importer.Import(E->getQualifierLoc()),
-      Importer.Import(E->getTemplateKeywordLoc()),
-      cast<NamedDecl>(ToFQ), MemberNameInfo, &ToTAInfo);
+      Importer.Import(E->getTemplateKeywordLoc()), cast<NamedDecl>(ToFQ),
+      MemberNameInfo, &ToTAInfo);
 }
 
 Expr *ASTNodeImporter::VisitCallExpr(CallExpr *E) {
