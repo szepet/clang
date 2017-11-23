@@ -5854,7 +5854,7 @@ Expr *ASTNodeImporter::VisitCXXUnresolvedConstructExpr(
   unsigned NumArgs = CE->arg_size();
 
   llvm::SmallVector<Expr *, 8> ToArgs(NumArgs);
-  if(ImportArrayChecked(CE->arg_begin(), CE->arg_end(), ToArgs.begin()))
+  if (ImportArrayChecked(CE->arg_begin(), CE->arg_end(), ToArgs.begin()))
     return nullptr;
 
   return CXXUnresolvedConstructExpr::Create(
@@ -5884,8 +5884,8 @@ Expr *ASTNodeImporter::VisitUnresolvedLookupExpr(UnresolvedLookupExpr *E) {
       return nullptr;
   }
 
-  TemplateArgumentListInfo* ResInfo = nullptr;
-  if(E->hasExplicitTemplateArgs()) {
+  TemplateArgumentListInfo *ResInfo = nullptr;
+  if (E->hasExplicitTemplateArgs()) {
     TemplateArgumentListInfo ToTAInfo(Importer.Import(E->getLAngleLoc()),
                                       Importer.Import(E->getRAngleLoc()));
     if (ImportTemplateArgumentListInfo(E->template_arguments(), ToTAInfo))
