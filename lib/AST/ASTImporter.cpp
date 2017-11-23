@@ -5835,15 +5835,15 @@ Expr *ASTNodeImporter::VisitCXXDependentScopeMemberExpr(
   // Import additional name location/type info.
   ImportDeclarationNameLoc(E->getMemberNameInfo(), MemberNameInfo);
   auto ToFQ = Importer.Import(E->getFirstQualifierFoundInScope());
-  if (ToFQ)
+  if (!ToFQ && E->getFirstQualifierFoundInScope())
     return nullptr;
 
   return CXXDependentScopeMemberExpr::Create(
       Importer.getToContext(), Base, BaseType, E->isArrow(),
       Importer.Import(E->getOperatorLoc()),
       Importer.Import(E->getQualifierLoc()),
-      Importer.Import(E->getTemplateKeywordLoc()), cast<NamedDecl>(ToFQ),
-      MemberNameInfo, &ToTAInfo);
+      Importer.Import(E->getTemplateKeywordLoc()),
+      cast_or_null<NamedDecl>(ToFQ), MemberNameInfo, &ToTAInfo);
 }
 
 Expr *ASTNodeImporter::VisitCallExpr(CallExpr *E) {
