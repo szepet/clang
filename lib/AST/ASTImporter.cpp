@@ -5952,7 +5952,7 @@ Expr *ASTNodeImporter::VisitUnresolvedLookupExpr(UnresolvedLookupExpr *E) {
 
 Expr *ASTNodeImporter::VisitUnresolvedMemberExpr(UnresolvedMemberExpr *E) {
   DeclarationName Name = Importer.Import(E->getName());
-  if(!E->getName().isEmpty() && Name.isEmpty())
+  if (!E->getName().isEmpty() && Name.isEmpty())
     return nullptr;
   DeclarationNameInfo NameInfo(Name, Importer.Import(E->getNameLoc()));
   // Import additional name location/type info.
@@ -5964,7 +5964,7 @@ Expr *ASTNodeImporter::VisitUnresolvedMemberExpr(UnresolvedMemberExpr *E) {
 
   UnresolvedSet<8> ToDecls;
   for (Decl *D : E->decls()) {
-    if (NamedDecl * To = cast_or_null<NamedDecl>(Importer.Import(D)))
+    if (NamedDecl *To = cast_or_null<NamedDecl>(Importer.Import(D)))
       ToDecls.addDecl(To);
     else
       return nullptr;
@@ -5985,13 +5985,12 @@ Expr *ASTNodeImporter::VisitUnresolvedMemberExpr(UnresolvedMemberExpr *E) {
   }
 
   return UnresolvedMemberExpr::Create(
-        Importer.getToContext(), E->hasUnresolvedUsing(), BaseE, BaseType,
-        E->isArrow(), Importer.Import(E->getOperatorLoc()),
-        Importer.Import(E->getQualifierLoc()),
-        Importer.Import(E->getTemplateKeywordLoc()), NameInfo,
-        ResInfo, ToDecls.begin(), ToDecls.end());
+      Importer.getToContext(), E->hasUnresolvedUsing(), BaseE, BaseType,
+      E->isArrow(), Importer.Import(E->getOperatorLoc()),
+      Importer.Import(E->getQualifierLoc()),
+      Importer.Import(E->getTemplateKeywordLoc()), NameInfo, ResInfo,
+      ToDecls.begin(), ToDecls.end());
 }
-
 
 Expr *ASTNodeImporter::VisitCallExpr(CallExpr *E) {
   QualType T = Importer.Import(E->getType());
