@@ -83,6 +83,7 @@ public:
               PostImplicitCallKind,
               MinImplicitCallKind = PreImplicitCallKind,
               MaxImplicitCallKind = PostImplicitCallKind,
+              LoopEnterKind,
               LoopExitKind,
               EpsilonKind};
 
@@ -615,7 +616,7 @@ private:
 ///
 /// The call exit is simulated with a sequence of nodes, which occur between
 /// CallExitBegin and CallExitEnd. The following operations occur between the
-/// two program points:
+/// two preogram points:
 /// - CallExitBegin
 /// - Bind the return value
 /// - Run Remove dead bindings (to clean up the dead symbols from the callee).
@@ -652,6 +653,23 @@ private:
   CallExitEnd() {}
   static bool isKind(const ProgramPoint &Location) {
     return Location.getKind() == CallExitEndKind;
+  }
+};
+
+class LoopEnter : public ProgramPoint {
+public:
+  LoopEnter(const Stmt *LoopStmt, const LocationContext *LC)
+      : ProgramPoint(LoopStmt, nullptr, LoopEnterKind, LC) {}
+
+  const Stmt *getLoopStmt() const {
+    return static_cast<const Stmt *>(getData1());
+  }
+
+private:
+  friend class ProgramPoint;
+  LoopEnter() {}
+  static bool isKind(const ProgramPoint &Location) {
+    return Location.getKind() == LoopEnterKind;
   }
 };
 

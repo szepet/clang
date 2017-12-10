@@ -447,6 +447,16 @@ const StackFrameContext *LocationContext::getCurrentStackFrame() const {
   return nullptr;
 }
 
+const LoopContext *LocationContext::getCurrentLoop() const{
+  const LocationContext *LC = this;
+  while (LC) {
+    if (const LoopContext *LoopCtx = dyn_cast<LoopContext>(LC))
+      return LoopCtx;
+    LC = LC->getParent();
+  }
+  return nullptr;
+}
+
 bool LocationContext::inTopFrame() const {
   return getCurrentStackFrame()->inTopFrame();
 }
@@ -483,6 +493,11 @@ void LocationContext::dumpStack(raw_ostream &OS, StringRef Indent) const {
       OS << Indent << "    (block context: "
                    << cast<BlockInvocationContext>(LCtx)->getContextData()
                    << ")\n";
+      break;
+    case Loop:
+      OS << Indent << "    (loop context: "
+         << cast<LoopContext>(LCtx)->getLoopStmt()
+         << ")\n";
       break;
     }
   }

@@ -521,11 +521,17 @@ void ExprEngine::ProcessLoopExit(const Stmt* S, ExplodedNode *Pred) {
   NodeBuilder Bldr(Pred, Dst, *currBldrCtx);
   ProgramStateRef NewState = Pred->getState();
 
-  if(AMgr.options.shouldUnrollLoops())
-    NewState = processLoopEnd(S, NewState);
+  if(AMgr.options.shouldUnrollLoops()) {
 
-  LoopExit PP(S, Pred->getLocationContext());
-  Bldr.generateNode(PP, NewState, Pred);
+    const LocationContext *NewLCtx = Pred->getLocationContext();
+    if (NewLCtx->getKind() == LocationContext::Loop &&
+        cast<LoopContext>(NewLCtx)->getLoopStmt() == S) {
+      NewLCtx = NewLCtx->getParent();
+      NewState = processLoopEnd(cast<LoopContext>(NewLCtx), NewState);
+    }
+    LoopExit PP(S, NewLCtx);
+    Bldr.generateNode(PP, NewState, Pred);
+  }
   // Enqueue the new nodes onto the work list.
   Engine.enqueue(Dst, currBldrCtx->getBlock(), currStmtIdx);
 }
@@ -1556,6 +1562,7 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
                                          ExplodedNode *Pred) {
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
+  Pred->getLocationContext()->dumpStack();
   // If we reach a loop which has a known bound (and meets
   // other constraints) then consider completely unrolling it.
   if(AMgr.options.shouldUnrollLoops()) {
@@ -1565,14 +1572,14 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
       ProgramStateRef NewState = updateLoopStack(Term, AMgr.getASTContext(),
                                                  Pred, maxBlockVisitOnPath);
       if (NewState != Pred->getState()) {
-        ExplodedNode *UpdatedNode = nodeBuilder.generateNode(NewState, Pred);
+        ExplodedNode *UpdatedNode = nodeBuilder.generateNode();
         if (!UpdatedNode)
           return;
         Pred = UpdatedNode;
       }
     }
     // Is we are inside an unrolled loop then no need the check the counters.
-    if(isUnrolledState(Pred->getState()))
+    if (isUnrolledState(Pred->getState()))
       return;
   }
 
@@ -2899,6 +2906,11 @@ struct DOTGraphTraits<ExplodedNode*> :
       case LocationContext::Scope:
         Out << "Entering scope";
         // FIXME: Add more info once ScopeContext is activated.
+        break;
+      case LocationContext::Loop:
+        Out << "Entering loop: ";
+        cast<LoopContext>(LC)->getLoopStmt()->printPretty(
+                               Out, nullptr, PrintingPolicy(LangOptions()));
         break;
       }
       Out << "\\l";
