@@ -186,7 +186,10 @@ public:
                                          const Stmt *S,
                                          const CFGBlock *Blk,
                                          unsigned Idx);
-  
+
+  const LoopContext *getLoopContext(const LocationContext *Parent,
+                                    const Stmt *LoopStmt);
+
   const BlockInvocationContext *
   getBlockInvocationContext(const LocationContext *parent,
                             const BlockDecl *BD,
@@ -329,7 +332,7 @@ class LoopContext : public LocationContext {
   friend class LocationContextManager;
   LoopContext(AnalysisDeclContext *Ctx, const LocationContext *Parent,
                const Stmt *LS)
-      : LocationContext(Loop, Ctx, Parent),LoopStmt(LS) {}
+      : LocationContext(Loop, Ctx, Parent), LoopStmt(LS) {}
 
 public:
   ~LoopContext() override {}
@@ -344,7 +347,7 @@ public:
   }
 
   static bool classof(const LocationContext *Ctx) {
-    return Ctx->getKind() == Scope;
+    return Ctx->getKind() == Loop;
   }
 };
 
@@ -418,6 +421,10 @@ public:
   const ScopeContext *getScope(AnalysisDeclContext *ctx,
                                const LocationContext *parent,
                                const Stmt *s);
+
+  const LoopContext *getLoopContext(AnalysisDeclContext *Ctx,
+                                    const LocationContext *Parent,
+                                    const Stmt *LoopStmt);
   
   const BlockInvocationContext *
   getBlockInvocationContext(AnalysisDeclContext *ctx,

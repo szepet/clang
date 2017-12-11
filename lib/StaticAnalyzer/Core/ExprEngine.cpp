@@ -367,6 +367,9 @@ void ExprEngine::processCFGElement(const CFGElement E, ExplodedNode *Pred,
     case CFGElement::LoopExit:
       ProcessLoopExit(E.castAs<CFGLoopExit>().getLoopStmt(), Pred);
       return;
+    case CFGElement::LoopEntrance:
+      ProcessLoopEntrance(E.castAs<CFGLoopEntrance>().getLoopStmt(), Pred);
+      return;
     case CFGElement::LifetimeEnds:
       return;
   }
@@ -512,26 +515,64 @@ void ExprEngine::ProcessStmt(const CFGStmt S,
   Engine.enqueue(Dst, currBldrCtx->getBlock(), currStmtIdx);
 }
 
-void ExprEngine::ProcessLoopExit(const Stmt* S, ExplodedNode *Pred) {
+void ExprEngine::ProcessLoopEntrance(const Stmt* LoopStmt, ExplodedNode *Pred) {
   PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),
-                                S->getLocStart(),
-                                "Error evaluating end of the loop");
+                                LoopStmt->getLocStart(),
+                                "Error evaluating enter of the loop");
+  llvm::errs() << "=====" << LoopStmt->getStmtClassName() <<"========Entrance==\n";
+  Pred->getLocationContext()->dumpStack();
+  llvm::errs() << "================\n";
+
   ExplodedNodeSet Dst;
-  Dst.Add(Pred);
   NodeBuilder Bldr(Pred, Dst, *currBldrCtx);
   ProgramStateRef NewState = Pred->getState();
 
+  const LocationContext *PrevLC = Pred->getLocationContext();
+  const LoopContext *LoopCtx = PrevLC->getAnalysisDeclContext()->
+      getLoopContext(PrevLC, LoopStmt);
+  LoopEnter LE(LoopStmt, LoopCtx);
+
+  if(AMgr.options.shouldUnrollLoops()) {
+    unsigned maxBlockVisitOnPath = AMgr.options.maxBlockVisitOnPath;
+    // Update the LocationContext.
+
+    NewState = updateLoopStates(LoopCtx, AMgr.getASTContext(), Pred,
+                                maxBlockVisitOnPath);
+  }
+
+  Bldr.generateNode(LE, NewState, Pred);
+  // Enqueue the new nodes onto the work list.
+  Engine.enqueue(Dst, currBldrCtx->getBlock(), currStmtIdx);
+}
+
+void ExprEngine::ProcessLoopExit(const Stmt* LoopStmt, ExplodedNode *Pred) {
+  PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),
+                                LoopStmt->getLocStart(),
+                                "Error evaluating end of the loop");
+
+  llvm::errs() << "=====" << LoopStmt->getStmtClassName() <<"========Exit==\n";
+  Pred->getLocationContext()->dumpStack();
+  llvm::errs() << "================\n";
+
+  ExplodedNodeSet Dst;
+  NodeBuilder Bldr(Pred, Dst, *currBldrCtx);
+  ProgramStateRef NewState = Pred->getState();
+  const LocationContext *NewLCtx = Pred->getLocationContext();
+
+  if (NewLCtx->getKind() == LocationContext::Loop &&
+      cast<LoopContext>(NewLCtx)->getLoopStmt() == LoopStmt)
+    NewLCtx = NewLCtx->getParent();
+
+  LoopExit LE(LoopStmt, NewLCtx);
+
   if(AMgr.options.shouldUnrollLoops()) {
 
-    const LocationContext *NewLCtx = Pred->getLocationContext();
     if (NewLCtx->getKind() == LocationContext::Loop &&
-        cast<LoopContext>(NewLCtx)->getLoopStmt() == S) {
-      NewLCtx = NewLCtx->getParent();
+        cast<LoopContext>(NewLCtx)->getLoopStmt() == LoopStmt)
       NewState = processLoopEnd(cast<LoopContext>(NewLCtx), NewState);
-    }
-    LoopExit PP(S, NewLCtx);
-    Bldr.generateNode(PP, NewState, Pred);
   }
+
+  Bldr.generateNode(LE, NewState, Pred);
   // Enqueue the new nodes onto the work list.
   Engine.enqueue(Dst, currBldrCtx->getBlock(), currStmtIdx);
 }
@@ -1560,27 +1601,45 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
 /// Block entrance.  (Update counters).
 void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
-                                         ExplodedNode *Pred) {
+                                         ExplodedNode *Pred,
+                                         const LocationContext *& NewLC) {
   PrettyStackTraceLocationContext CrashInfo(Pred->getLocationContext());
-  Pred->getLocationContext()->dumpStack();
+
   // If we reach a loop which has a known bound (and meets
   // other constraints) then consider completely unrolling it.
   if(AMgr.options.shouldUnrollLoops()) {
-    unsigned maxBlockVisitOnPath = AMgr.options.maxBlockVisitOnPath;
-    const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
-    if (Term) {
-      ProgramStateRef NewState = updateLoopStack(Term, AMgr.getASTContext(),
-                                                 Pred, maxBlockVisitOnPath);
-      if (NewState != Pred->getState()) {
-        ExplodedNode *UpdatedNode = nodeBuilder.generateNode();
-        if (!UpdatedNode)
-          return;
-        Pred = UpdatedNode;
-      }
-    }
-    // Is we are inside an unrolled loop then no need the check the counters.
-    if (isUnrolledState(Pred->getState()))
-      return;
+
+   /*do {
+     unsigned maxBlockVisitOnPath = AMgr.options.maxBlockVisitOnPath;
+     const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
+
+     if (!(Term &&
+           (isa<ForStmt>(Term) || isa<WhileStmt>(Term) || isa<DoStmt>(Term))))
+       break;
+
+     // Update the LocationContext.
+     //const LoopContext* LoopCtx = Pred->getLocationContext()->
+     //    getAnalysisDeclContext()->getLoopContext(Pred->getLocationContext(),
+                                                  Term);
+     //LoopEnter LE(Term, LoopCtx);
+
+     if (Term) {
+       ProgramStateRef NewState = updateLoopStates(LoopCtx,
+                                                   AMgr.getASTContext(), Pred,
+                                                   maxBlockVisitOnPath);
+       if (NewState != Pred->getState()) {
+         ExplodedNode *UpdatedNode = nodeBuilder.generateNode(NewState, Pred);
+         if (!UpdatedNode)
+           return;
+         Pred = UpdatedNode;
+       }
+     }
+   } while(false);*/
+     // If we are inside an unrolled loop then no need the check the counters.
+     if (isUnrolledLoopContext(Pred->getLocationContext()->getCurrentLoop(),
+                               Pred->getState()))
+       return;
+
   }
 
   // If this block is terminated by a loop and it has already been visited the
@@ -2754,6 +2813,12 @@ struct DOTGraphTraits<ExplodedNode*> :
       case ProgramPoint::LoopExitKind: {
         LoopExit LE = Loc.castAs<LoopExit>();
         Out << "LoopExit: " << LE.getLoopStmt()->getStmtClassName();
+        break;
+      }
+
+      case ProgramPoint::LoopEnterKind: {
+        LoopEnter LE = Loc.castAs<LoopEnter>();
+        Out << "LoopEnter: " << LE.getLoopStmt()->getStmtClassName();
         break;
       }
 

@@ -59,6 +59,7 @@ public:
     Initializer,
     NewAllocator,
     LifetimeEnds,
+    LoopEntrance,
     LoopExit,
     // dtor kind
     AutomaticObjectDtor,
@@ -175,6 +176,25 @@ private:
 ///
 /// Note: a loop exit element can be reached even when the loop body was never
 /// entered.
+class CFGLoopEntrance : public CFGElement {
+public:
+  explicit CFGLoopEntrance(const Stmt *stmt)
+      : CFGElement(LoopEntrance, stmt) {}
+
+  const Stmt *getLoopStmt() const {
+    return static_cast<Stmt *>(Data1.getPointer());
+  }
+
+private:
+  friend class CFGElement;
+  CFGLoopEntrance() {}
+  static bool isKind(const CFGElement &elem) {
+    return elem.getKind() == LoopEntrance;
+  }
+};
+
+
+
 class CFGLoopExit : public CFGElement {
 public:
     explicit CFGLoopExit(const Stmt *stmt)
@@ -754,6 +774,10 @@ public:
 
   void appendLoopExit(const Stmt *LoopStmt, BumpVectorContext &C) {
     Elements.push_back(CFGLoopExit(LoopStmt), C);
+  }
+
+  void appendLoopEntrance(const Stmt *LoopStmt, BumpVectorContext &C) {
+    Elements.push_back(CFGLoopEntrance(LoopStmt), C);
   }
 
   void appendDeleteDtor(CXXRecordDecl *RD, CXXDeleteExpr *DE, BumpVectorContext &C) {

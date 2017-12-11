@@ -312,7 +312,7 @@ void ExprEngine::processCallExit(ExplodedNode *CEBNode) {
 
     // Step 4: Generate the CallExit and leave the callee's context.
     // CleanedNodes -> CEENode
-    CallExitEnd Loc(calleeCtx, callerCtx);
+    CallExitEnd Loc(calleeCtx, calleeCtx->getParent());
     bool isNew;
     ProgramStateRef CEEState = (*I == CEBNode) ? state : (*I)->getState();
     ExplodedNode *CEENode = G.getNode(Loc, CEEState, false, &isNew);
@@ -408,13 +408,13 @@ bool ExprEngine::inlineCall(const CallEvent &Call, const Decl *D,
 
   const LocationContext *CurLC = Pred->getLocationContext();
   const StackFrameContext *CallerSFC = CurLC->getCurrentStackFrame();
-  const LocationContext *ParentOfCallee = CallerSFC;
+  const LocationContext *ParentOfCallee = CurLC;
   if (Call.getKind() == CE_Block &&
       !cast<BlockCall>(Call).isConversionFromLambda()) {
     const BlockDataRegion *BR = cast<BlockCall>(Call).getBlockRegion();
     assert(BR && "If we have the block definition we should have its region");
     AnalysisDeclContext *BlockCtx = AMgr.getAnalysisDeclContext(D);
-    ParentOfCallee = BlockCtx->getBlockInvocationContext(CallerSFC,
+    ParentOfCallee = BlockCtx->getBlockInvocationContext(CurLC,
                                                          cast<BlockDecl>(D),
                                                          BR);
   }

@@ -313,6 +313,12 @@ AnalysisDeclContext::getStackFrame(LocationContext const *Parent, const Stmt *S,
   return getLocationContextManager().getStackFrame(this, Parent, S, Blk, Idx);
 }
 
+const LoopContext *
+AnalysisDeclContext::getLoopContext(LocationContext const *Parent,
+                             const Stmt *LoopStmt) {
+  return getLocationContextManager().getLoopContext(this, Parent, LoopStmt);
+}
+
 const BlockInvocationContext *
 AnalysisDeclContext::getBlockInvocationContext(const LocationContext *parent,
                                                const clang::BlockDecl *BD,
@@ -365,6 +371,10 @@ void ScopeContext::Profile(llvm::FoldingSetNodeID &ID) {
   Profile(ID, getAnalysisDeclContext(), getParent(), Enter);
 }
 
+void LoopContext::Profile(llvm::FoldingSetNodeID &ID) {
+  Profile(ID, getAnalysisDeclContext(), getParent(), LoopStmt);
+}
+
 void BlockInvocationContext::Profile(llvm::FoldingSetNodeID &ID) {
   Profile(ID, getAnalysisDeclContext(), getParent(), BD, ContextData);
 }
@@ -413,6 +423,13 @@ LocationContextManager::getScope(AnalysisDeclContext *ctx,
                                  const LocationContext *parent,
                                  const Stmt *s) {
   return getLocationContext<ScopeContext, Stmt>(ctx, parent, s);
+}
+
+const LoopContext *
+LocationContextManager::getLoopContext(AnalysisDeclContext *Ctx,
+                                 const LocationContext *Parent,
+                                 const Stmt *LoopStmt) {
+  return getLocationContext<LoopContext, Stmt>(Ctx, Parent, LoopStmt);
 }
 
 const BlockInvocationContext *
@@ -496,8 +513,8 @@ void LocationContext::dumpStack(raw_ostream &OS, StringRef Indent) const {
       break;
     case Loop:
       OS << Indent << "    (loop context: "
-         << cast<LoopContext>(LCtx)->getLoopStmt()
-         << ")\n";
+         << cast<LoopContext>(LCtx)->getLoopStmt() << " " << cast<LoopContext>(LCtx)->getLoopStmt()->getStmtClassName()
+          << ")\n";
       break;
     }
   }
