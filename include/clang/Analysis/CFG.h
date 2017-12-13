@@ -59,6 +59,7 @@ public:
     Initializer,
     NewAllocator,
     LifetimeEnds,
+    LoopEntrance,
     LoopExit,
     // dtor kind
     AutomaticObjectDtor,
@@ -166,6 +167,26 @@ private:
   CFGNewAllocator() {}
   static bool isKind(const CFGElement &elem) {
     return elem.getKind() == NewAllocator;
+  }
+};
+
+/// Represents the point where a loop begins. This element is encountered right
+/// before the first loop element.  This element is is only produced when
+/// building the CFG for the static analyzer and hidden behind the
+/// 'cfg-loopexit' analyzer config flag.
+class CFGLoopEntrance : public CFGElement {
+public:
+  explicit CFGLoopEntrance(const Stmt *stmt) : CFGElement(LoopEntrance, stmt) {}
+
+  const Stmt *getLoopStmt() const {
+    return static_cast<Stmt *>(Data1.getPointer());
+  }
+
+private:
+  friend class CFGElement;
+  CFGLoopEntrance() {}
+  static bool isKind(const CFGElement &elem) {
+    return elem.getKind() == LoopEntrance;
   }
 };
 
@@ -754,6 +775,10 @@ public:
 
   void appendLoopExit(const Stmt *LoopStmt, BumpVectorContext &C) {
     Elements.push_back(CFGLoopExit(LoopStmt), C);
+  }
+
+  void appendLoopEntrance(const Stmt *LoopStmt, BumpVectorContext &C) {
+    Elements.push_back(CFGLoopEntrance(LoopStmt), C);
   }
 
   void appendDeleteDtor(CXXRecordDecl *RD, CXXDeleteExpr *DE, BumpVectorContext &C) {

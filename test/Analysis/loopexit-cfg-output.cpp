@@ -34,6 +34,7 @@
 // CHECK:       [B5]
 // CHECK-NEXT:   1: 0
 // CHECK-NEXT:   2: int i = 0;
+// CHECK-NEXT:   3: ForStmt (LoopEntrance)
 // CHECK-NEXT:   Preds (1): B6
 // CHECK-NEXT:   Succs (1): B4
 
@@ -46,8 +47,8 @@ void check_forloop1() {
   return;
 }
 
-// CHECK:       [B4 (ENTRY)]
-// CHECK-NEXT:   Succs (1): B3
+// CHECK:       [B5 (ENTRY)]
+// CHECK-NEXT:   Succs (1): B4
 
 // CHECK:       [B1]
 // CHECK-NEXT:   1: ForStmt (LoopExit)
@@ -62,6 +63,11 @@ void check_forloop1() {
 // CHECK-NEXT:   Preds (2): B2 B4
 // CHECK-NEXT:   Succs (2): B2 NULL
 
+// CHECK:       [B4]
+// CHECK-NEXT:   1: ForStmt (LoopEntrance)
+// CHECK-NEXT:   Preds (1): B5
+// CHECK-NEXT:   Succs (1): B3
+
 // CHECK:       [B0 (EXIT)]
 // CHECK-NEXT:   Preds (1): B1
 void check_forloop2() {
@@ -69,8 +75,8 @@ void check_forloop2() {
     ;
 }
 
-// CHECK:       [B5 (ENTRY)]
-// CHECK-NEXT:   Succs (1): B4
+// CHECK:       [B6 (ENTRY)]
+// CHECK-NEXT:   Succs (1): B5
 
 // CHECK:       [B1]
 // CHECK-NEXT:   1: WhileStmt (LoopExit)
@@ -90,6 +96,11 @@ void check_forloop2() {
 // CHECK-NEXT:   T: while [B4.1]
 // CHECK-NEXT:   Preds (2): B2 B5
 // CHECK-NEXT:   Succs (2): B3 NULL
+
+// CHECK:       [B5]
+// CHECK-NEXT:   1: WhileStmt (LoopEntrance)
+// CHECK-NEXT:   Preds (1): B6
+// CHECK-NEXT:   Succs (1): B4
 
 // CHECK:       [B0 (EXIT)]
 // CHECK-NEXT:   Preds (1): B1
@@ -125,6 +136,7 @@ void check_while1() {
 
 // CHECK:       [B4]
 // CHECK-NEXT:   1: int l;
+// CHECK-NEXT:   2: WhileStmt (LoopEntrance)
 // CHECK-NEXT:   Preds (1): B5
 // CHECK-NEXT:   Succs (1): B3
 
@@ -138,8 +150,8 @@ void check_while2() {
   return;
 }
 
-// CHECK:       [B4 (ENTRY)]
-// CHECK-NEXT:   Succs (1): B3
+// CHECK:       [B5 (ENTRY)]
+// CHECK-NEXT:   Succs (1): B4
 
 // CHECK:       [B1]
 // CHECK-NEXT:   1: WhileStmt (LoopExit)
@@ -155,6 +167,11 @@ void check_while2() {
 // CHECK-NEXT:   Preds (2): B2 B4
 // CHECK-NEXT:   Succs (2): NULL B1
 
+// CHECK:       [B4]
+// CHECK-NEXT:   1: WhileStmt (LoopEntrance)
+// CHECK-NEXT:   Preds (1): B5
+// CHECK-NEXT:   Succs (1): B3
+
 // CHECK:       [B0 (EXIT)]
 // CHECK-NEXT:   Preds (1): B1
 void check_while3() {
@@ -163,8 +180,8 @@ void check_while3() {
   }
 }
 
-// CHECK:       [B4 (ENTRY)]
-// CHECK-NEXT:   Succs (1): B2
+// CHECK:       [B5 (ENTRY)]
+// CHECK-NEXT:   Succs (1): B4
 
 // CHECK:       [B1]
 // CHECK-NEXT:   1: DoStmt (LoopExit)
@@ -178,6 +195,11 @@ void check_while3() {
 // CHECK-NEXT:   Succs (2): NULL B1
 
 // CHECK:       [B3]
+// CHECK-NEXT:   Succs (1): B2
+
+// CHECK:       [B4]
+// CHECK-NEXT:   1: DoStmt (LoopEntrance)
+// CHECK-NEXT:   Preds (1): B5
 // CHECK-NEXT:   Succs (1): B2
 
 // CHECK:       [B0 (EXIT)]
@@ -221,6 +243,7 @@ void check_dowhile1() {
 // CHECK:       [B5]
 // CHECK-NEXT:   1: 2
 // CHECK-NEXT:   2: int j = 2;
+// CHECK-NEXT:   3: DoStmt (LoopEntrance)
 // CHECK-NEXT:   Preds (1): B6
 // CHECK-NEXT:   Succs (1): B3
 
@@ -276,6 +299,7 @@ void check_dowhile2() {
 // CHECK:       [B7]
 // CHECK-NEXT:   1: 1
 // CHECK-NEXT:   2: int j = 1;
+// CHECK-NEXT:   3: ForStmt (LoopEntrance)
 // CHECK-NEXT:   Preds (1): B8
 // CHECK-NEXT:   Succs (1): B6
 
@@ -292,6 +316,7 @@ void check_dowhile2() {
 // CHECK-NEXT:   1: 40
 // CHECK-NEXT:   2: -[B9.1]
 // CHECK-NEXT:   3: int i = -40;
+// CHECK-NEXT:   4: WhileStmt (LoopEntrance)
 // CHECK-NEXT:   Preds (1): B10
 // CHECK-NEXT:   Succs (1): B8
 
@@ -305,19 +330,19 @@ void nested_loops1() {
   }
 }
 
-// CHECK:       [B9 (ENTRY)]
-// CHECK-NEXT:   Succs (1): B8
+// CHECK:       [B10 (ENTRY)]
+// CHECK-NEXT:   Succs (1): B9
 
 // CHECK:       [B1]
 // CHECK-NEXT:   1: ForStmt (LoopExit)
-// CHECK-NEXT:   Preds (1): B7
+// CHECK-NEXT:   Preds (1): B8
 // CHECK-NEXT:   Succs (1): B0
 
 // CHECK:       [B2]
 // CHECK-NEXT:   1: j
 // CHECK-NEXT:   2: [B2.1]++
 // CHECK-NEXT:   Preds (1): B3
-// CHECK-NEXT:   Succs (1): B7
+// CHECK-NEXT:   Succs (1): B8
 
 // CHECK:       [B3]
 // CHECK-NEXT:   1: DoStmt (LoopExit)
@@ -346,22 +371,28 @@ void nested_loops1() {
 // CHECK-NEXT:   Succs (1): B5
 
 // CHECK:       [B7]
-// CHECK-NEXT:   1: j
-// CHECK-NEXT:   2: [B7.1] (ImplicitCastExpr, LValueToRValue, int)
-// CHECK-NEXT:   3: 6
-// CHECK-NEXT:   4: [B7.2] < [B7.3]
-// CHECK-NEXT:   T: for (...; [B7.4]; ...)
-// CHECK-NEXT:   Preds (2): B2 B8
-// CHECK-NEXT:   Succs (2): B5 B1
+// CHECK-NEXT:   1: DoStmt (LoopEntrance)
+// CHECK-NEXT:   Preds (1): B8
+// CHECK-NEXT:   Succs (1): B5
 
 // CHECK:       [B8]
+// CHECK-NEXT:   1: j
+// CHECK-NEXT:   2: [B8.1] (ImplicitCastExpr, LValueToRValue, int)
+// CHECK-NEXT:   3: 6
+// CHECK-NEXT:   4: [B8.2] < [B8.3]
+// CHECK-NEXT:   T: for (...; [B8.4]; ...)
+// CHECK-NEXT:   Preds (2): B2 B9
+// CHECK-NEXT:   Succs (2): B7 B1
+
+// CHECK:       [B9]
 // CHECK-NEXT:   1: 40
-// CHECK-NEXT:   2: -[B8.1]
+// CHECK-NEXT:   2: -[B9.1]
 // CHECK-NEXT:   3: int i = -40;
 // CHECK-NEXT:   4: 1
 // CHECK-NEXT:   5: int j = 1;
-// CHECK-NEXT:   Preds (1): B9
-// CHECK-NEXT:   Succs (1): B7
+// CHECK-NEXT:   6: ForStmt (LoopEntrance)
+// CHECK-NEXT:   Preds (1): B10
+// CHECK-NEXT:   Succs (1): B8
 
 // CHECK:       [B0 (EXIT)]
 // CHECK-NEXT:   Preds (1): B1
@@ -418,6 +449,7 @@ void nested_loops2() {
 // CHECK-NEXT:   1: ForStmt (LoopExit)
 // CHECK-NEXT:   2: 1
 // CHECK-NEXT:   3: int i = 1;
+// CHECK-NEXT:   4: WhileStmt (LoopEntrance)
 // CHECK-NEXT:   Preds (2): B8 B10
 // CHECK-NEXT:   Succs (1): B5
 
@@ -453,24 +485,24 @@ void nested_loops2() {
 // CHECK:       [B11]
 // CHECK-NEXT:   1: 2
 // CHECK-NEXT:   2: int i = 2;
+// CHECK-NEXT:   3: ForStmt (LoopEntrance)
 // CHECK-NEXT:   Preds (1): B12
 // CHECK-NEXT:   Succs (1): B10
 
 // CHECK:       [B0 (EXIT)]
 // CHECK-NEXT:   Preds (1): B1
-void check_break()
-{
-  for(int i = 2; i < 6; i++) {
-    if(i == 4)
+void check_break() {
+  for (int i = 2; i < 6; i++) {
+    if (i == 4)
       break;
   }
 
   int i = 1;
-  while(i<5){
+  while (i < 5) {
     i++;
-    if(i%2)
+    if (i % 2)
       break;
   }
-  
+
   return;
 }
