@@ -79,7 +79,6 @@ struct fltSemantics;
 namespace clang {
 
 class APValue;
-class ASTImporter;
 class ASTMutationListener;
 class ASTRecordLayout;
 class AtomicExpr;

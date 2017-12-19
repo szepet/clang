@@ -353,20 +353,28 @@ RuntimeDefinition AnyFunctionCall::getRuntimeDefinition() const {
   const FunctionDecl *FD = getDecl();
   // Note that the AnalysisDeclContext will have the FunctionDecl with
   // the definition (if one exists).
-  if (!FD)
-    return RuntimeDefinition();
-
-  AnalysisDeclContext *AD =
-    getLocationContext()->getAnalysisDeclContext()->
-    getManager()->getContext(FD);
-  if (AD->getBody())
-    return RuntimeDefinition(AD->getDecl());
+  if (FD) {
+    AnalysisDeclContext *AD =
+      getLocationContext()->getAnalysisDeclContext()->
+      getManager()->getContext(FD);
+    bool IsAutosynthesized;
+    Stmt* Body = AD->getBody(IsAutosynthesized);
+    DEBUG({
+        if (IsAutosynthesized)
+          llvm::dbgs() << "Using autosynthesized body for " << FD->getName()
+                       << "\n";
+    });
+    if (Body) {
+      const Decl* Decl = AD->getDecl();
+      return RuntimeDefinition(Decl);
+    }
+  }
 
   auto Engine = static_cast<ExprEngine *>(
       getState()->getStateManager().getOwningEngine());
 
   //Try to get CTU definition only if CTUDir is provided.
-  if (Engine->getAnalysisManager().options.getCTUDir().empty())
+  if (!Engine->getAnalysisManager().options.naiveCTUEnabled())
     return RuntimeDefinition();
 
   cross_tu::CrossTranslationUnitContext &CTUCtx =

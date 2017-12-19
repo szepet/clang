@@ -287,6 +287,10 @@ private:
   /// \sa getCTUDir
   Optional<StringRef> CTUDir;
 
+  /// \sa naiveCTUEnabled
+  Optional<bool> NaiveCTU;
+
+
   /// A helper function that retrieves option for a given full-qualified
   /// checker name.
   /// Options for checkers can be specified via 'analyzer-config' command-line
@@ -590,6 +594,11 @@ public:
 
   /// Returns the directory containing the CTU related files.
   StringRef getCTUDir();
+
+  /// Returns true when naive cross translation unit analysis is enabled.
+  /// This is an experimental feature to inline functions from another
+  /// translation units.
+  bool naiveCTUEnabled();
 
 public:
   AnalyzerOptions() :

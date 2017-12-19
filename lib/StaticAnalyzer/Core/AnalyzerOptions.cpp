@@ -394,7 +394,18 @@ bool AnalyzerOptions::shouldDisplayNotesAsEvents() {
 }
 
 StringRef AnalyzerOptions::getCTUDir() {
-  if (!CTUDir.hasValue() || !llvm::sys::fs::is_directory(*CTUDir))
+  if (!CTUDir.hasValue()) {
     CTUDir = getOptionAsString("ctu-dir", "");
+    if (!llvm::sys::fs::is_directory(*CTUDir))
+      CTUDir = "";
+  }
   return CTUDir.getValue();
+}
+
+bool AnalyzerOptions::naiveCTUEnabled() {
+  if (!NaiveCTU.hasValue()) {
+    NaiveCTU = getBooleanOption("experimental-enable-naive-ctu-analysis",
+                                /*Default=*/false);
+  }
+  return NaiveCTU.getValue();
 }
