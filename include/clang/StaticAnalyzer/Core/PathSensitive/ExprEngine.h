@@ -196,6 +196,8 @@ public:
 
   void ProcessStmt(const CFGStmt S, ExplodedNode *Pred);
 
+  void ProcessLoopEntrance(const Stmt *S, ExplodedNode *Pred);
+
   void ProcessLoopExit(const Stmt* S, ExplodedNode *Pred);
 
   void ProcessInitializer(const CFGInitializer I, ExplodedNode *Pred);
@@ -219,7 +221,7 @@ public:
   void processCFGBlockEntrance(const BlockEdge &L,
                                NodeBuilderWithSinks &nodeBuilder,
                                ExplodedNode *Pred) override;
- 
+
   /// ProcessBranch - Called by CoreEngine.  Used to generate successor
   ///  nodes by processing the 'effects' of a branch condition.
   void processBranch(const Stmt *Condition, const Stmt *Term, 

@@ -275,6 +275,7 @@ void CoreEngine::dispatchWorkItem(ExplodedNode* Pred, ProgramPoint Loc,
              Loc.getAs<PostInitializer>() ||
              Loc.getAs<PostImplicitCall>() ||
              Loc.getAs<CallExitEnd>() ||
+             Loc.getAs<LoopEnter>() ||
              Loc.getAs<LoopExit>());
       HandlePostStmt(WU.getBlock(), WU.getIndex(), Pred);
       break;
@@ -332,8 +333,10 @@ void CoreEngine::HandleBlockEdge(const BlockEdge &L, ExplodedNode *Pred) {
   ExplodedNodeSet dstNodes;
   BlockEntrance BE(Blk, Pred->getLocationContext());
   NodeBuilderWithSinks nodeBuilder(Pred, dstNodes, BuilderCtx, BE);
+  const LocationContext *NewLC = Pred->getLocationContext();
   SubEng.processCFGBlockEntrance(L, nodeBuilder, Pred);
 
+  BE = BlockEntrance(Blk, NewLC);
   // Auto-generate a node.
   if (!nodeBuilder.hasGeneratedNodes()) {
     nodeBuilder.generateNode(Pred->State, Pred);
@@ -568,6 +571,7 @@ void CoreEngine::enqueueStmtNode(ExplodedNode *N,
   // Do not create extra nodes. Move to the next CFG element.
   if (N->getLocation().getAs<PostInitializer>() ||
       N->getLocation().getAs<PostImplicitCall>()||
+      N->getLocation().getAs<LoopEnter>() ||
       N->getLocation().getAs<LoopExit>()) {
     WList->enqueue(N, Block, Idx+1);
     return;
@@ -637,7 +641,8 @@ void CoreEngine::enqueueEndOfFunction(ExplodedNodeSet &Set, const ReturnStmt *RS
   for (ExplodedNodeSet::iterator I = Set.begin(), E = Set.end(); I != E; ++I) {
     ExplodedNode *N = *I;
     // If we are in an inlined call, generate CallExitBegin node.
-    if (N->getLocationContext()->getParent()) {
+    if (isa<StackFrameContext>(N->getLocationContext()) &&
+        N->getLocationContext()->getParent()) {
       N = generateCallExitBeginNode(N, RS);
       if (N)
         WList->enqueue(N);

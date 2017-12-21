@@ -34,15 +34,15 @@ class AnalysisManager;
 
 /// Returns if the given State indicates that is inside a completely unrolled
 /// loop.
-bool isUnrolledState(ProgramStateRef State);
+bool isUnrolledLoopContext(const LoopContext *LC, ProgramStateRef State);
 
 /// Updates the stack of loops contained by the ProgramState.
-ProgramStateRef updateLoopStack(const Stmt *LoopStmt, ASTContext &ASTCtx,
-                                ExplodedNode* Pred, unsigned maxVisitOnPath);
+ProgramStateRef updateLoopStates(const LoopContext *LC, ASTContext &ASTCtx,
+                                 ExplodedNode *Pred, unsigned MaxVisitOnPath);
 
 /// Updates the given ProgramState. In current implementation it removes the top
 /// element of the stack of loops.
-ProgramStateRef processLoopEnd(const Stmt *LoopStmt, ProgramStateRef State);
+ProgramStateRef processLoopEnd(const LoopContext *LC, ProgramStateRef State);
 
 } // end namespace ento
 } // end namespace clang

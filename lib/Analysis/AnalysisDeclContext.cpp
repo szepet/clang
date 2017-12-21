@@ -313,6 +313,12 @@ AnalysisDeclContext::getStackFrame(LocationContext const *Parent, const Stmt *S,
   return getLocationContextManager().getStackFrame(this, Parent, S, Blk, Idx);
 }
 
+const LoopContext *
+AnalysisDeclContext::getLoopContext(const LocationContext *Parent,
+                                    const Stmt *LoopStmt) {
+  return getLocationContextManager().getLoopContext(this, Parent, LoopStmt);
+}
+
 const BlockInvocationContext *
 AnalysisDeclContext::getBlockInvocationContext(const LocationContext *parent,
                                                const clang::BlockDecl *BD,
@@ -365,6 +371,10 @@ void ScopeContext::Profile(llvm::FoldingSetNodeID &ID) {
   Profile(ID, getAnalysisDeclContext(), getParent(), Enter);
 }
 
+void LoopContext::Profile(llvm::FoldingSetNodeID &ID) {
+  Profile(ID, getAnalysisDeclContext(), getParent(), LoopStmt);
+}
+
 void BlockInvocationContext::Profile(llvm::FoldingSetNodeID &ID) {
   Profile(ID, getAnalysisDeclContext(), getParent(), BD, ContextData);
 }
@@ -415,6 +425,13 @@ LocationContextManager::getScope(AnalysisDeclContext *ctx,
   return getLocationContext<ScopeContext, Stmt>(ctx, parent, s);
 }
 
+const LoopContext *
+LocationContextManager::getLoopContext(AnalysisDeclContext *Ctx,
+                                       const LocationContext *Parent,
+                                       const Stmt *LoopStmt) {
+  return getLocationContext<LoopContext, Stmt>(Ctx, Parent, LoopStmt);
+}
+
 const BlockInvocationContext *
 LocationContextManager::getBlockInvocationContext(AnalysisDeclContext *ctx,
                                                   const LocationContext *parent,
@@ -442,6 +459,16 @@ const StackFrameContext *LocationContext::getCurrentStackFrame() const {
   while (LC) {
     if (const StackFrameContext *SFC = dyn_cast<StackFrameContext>(LC))
       return SFC;
+    LC = LC->getParent();
+  }
+  return nullptr;
+}
+
+const LoopContext *LocationContext::getCurrentLoop() const {
+  const LocationContext *LC = this;
+  while (LC) {
+    if (const LoopContext *LoopCtx = dyn_cast<LoopContext>(LC))
+      return LoopCtx;
     LC = LC->getParent();
   }
   return nullptr;
@@ -482,6 +509,11 @@ void LocationContext::dumpStack(raw_ostream &OS, StringRef Indent) const {
     case Block:
       OS << Indent << "    (block context: "
                    << cast<BlockInvocationContext>(LCtx)->getContextData()
+                   << ")\n";
+      break;
+    case Loop:
+      OS << Indent << "    (loop context: "
+                   << cast<LoopContext>(LCtx)->getLoopStmt()->getStmtClassName()
                    << ")\n";
       break;
     }
