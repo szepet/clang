@@ -21,12 +21,13 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/Builtins.h"
 #include "llvm/ADT/DenseMap.h"
-#include <memory>
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/SaveAndRestore.h"
+#include <memory>
+#include <queue>
 
 using namespace clang;
 
@@ -610,6 +611,7 @@ private:
   }
   CFGBlock *addInitializer(CXXCtorInitializer *I);
   void addLoopExit(const Stmt *LoopStmt);
+  void addLoopExit(const Stmt *FromStmt, const Stmt *ToStmt);
   void addLoopEntrance(const Stmt *LoopStmt);
   void addAutomaticObjDtors(LocalScope::const_iterator B,
                             LocalScope::const_iterator E, Stmt *S);
@@ -1278,6 +1280,50 @@ void CFGBuilder::addLoopExit(const Stmt *LoopStmt){
     return;
   autoCreateBlock();
   appendLoopExit(Block, LoopStmt);
+}
+
+llvm::SmallSetVector<const Stmt *, 4>
+collectContainingLoops(const Stmt *S, ASTContext &ASTCtx) {
+  llvm::SmallSetVector<const Stmt *, 4> LoopStmts;
+
+  if (!S)
+    return LoopStmts;
+
+  std::queue<ast_type_traits::DynTypedNode> NodesToVisit;
+  NodesToVisit.push(ast_type_traits::DynTypedNode::create(*S));
+
+  while (!NodesToVisit.empty()) {
+    ast_type_traits::DynTypedNode Node = NodesToVisit.front();
+    NodesToVisit.pop();
+
+    for (auto &Parent : ASTCtx.getParents(Node)) {
+      NodesToVisit.push(Parent);
+    }
+
+    const Stmt *LoopStmt = Node.get<Stmt>();
+    if (LoopStmt && (isa<ForStmt>(LoopStmt) || isa<WhileStmt>(LoopStmt) ||
+                     isa<DoStmt>(LoopStmt)))
+      LoopStmts.insert(LoopStmt);
+  }
+  return LoopStmts;
+}
+
+void CFGBuilder::addLoopExit(const Stmt *FromStmt, const Stmt *ToStmt) {
+  if (!BuildOpts.AddLoopExit)
+    return;
+
+  llvm::SmallSetVector<const Stmt *, 4> FromLoopStmts =
+      collectContainingLoops(FromStmt, *Context);
+
+  llvm::SmallSetVector<const Stmt *, 4> ToLoopStmts =
+      collectContainingLoops(ToStmt, *Context);
+
+  FromLoopStmts.set_subtract(ToLoopStmts);
+  for (llvm::SmallSetVector<const Stmt *, 4>::reverse_iterator
+           I = FromLoopStmts.rbegin(),
+           E = FromLoopStmts.rend();
+       I != E; ++I)
+    appendLoopExit(Block, *I);
 }
 
 void CFGBuilder::addLoopEntrance(const Stmt *LoopStmt) {
@@ -2482,6 +2528,7 @@ CFGBlock *CFGBuilder::VisitReturnStmt(ReturnStmt *R) {
   Block = createBlock(false);
 
   addAutomaticObjHandling(ScopePos, LocalScope::const_iterator(), R);
+  addLoopExit(R, nullptr);
 
   // If the one of the destructors does not return, we already have the Exit
   // block as a successor.
@@ -2676,7 +2723,7 @@ CFGBlock *CFGBuilder::VisitGotoStmt(GotoStmt *G) {
     addAutomaticObjHandling(ScopePos, JT.scopePosition, G);
     addSuccessor(Block, JT.block);
   }
-
+  addLoopExit(G, G->getLabel()->getStmt());
   return Block;
 }
 

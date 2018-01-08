@@ -540,6 +540,7 @@ void ExprEngine::ProcessLoopEntrance(const Stmt *LoopStmt, ExplodedNode *Pred) {
 }
 
 void ExprEngine::ProcessLoopExit(const Stmt *LoopStmt, ExplodedNode *Pred) {
+  //llvm::errs() << "ENTERED ProcessLoopExit\n";
   PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),
                                 LoopStmt->getLocStart(),
                                 "Error evaluating end of the loop");
