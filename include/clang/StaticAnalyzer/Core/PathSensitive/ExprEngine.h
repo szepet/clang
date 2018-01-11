@@ -137,8 +137,8 @@ public:
 
   BugReporter& getBugReporter() { return BR; }
 
-  cross_tu::CrossTranslationUnitContext &getCrossTranslationUnitContext() {
-    return CTU;
+  cross_tu::CrossTranslationUnitContext *getCrossTranslationUnitContext() {
+    return &CTU;
   }
 
   const NodeBuilderContext &getBuilderContext() {

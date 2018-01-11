@@ -287,6 +287,9 @@ private:
   /// \sa getCTUDir
   Optional<StringRef> CTUDir;
 
+  /// \sa getCTUIndexName
+  Optional<StringRef> CTUIndexName;
+
   /// \sa naiveCTUEnabled
   Optional<bool> NaiveCTU;
 
@@ -594,6 +597,9 @@ public:
 
   /// Returns the directory containing the CTU related files.
   StringRef getCTUDir();
+
+  /// Returns the name of the file containing the CTU index of functions.
+  StringRef getCTUIndexName();
 
   /// Returns true when naive cross translation unit analysis is enabled.
   /// This is an experimental feature to inline functions from another

@@ -370,19 +370,17 @@ RuntimeDefinition AnyFunctionCall::getRuntimeDefinition() const {
     }
   }
 
-  auto Engine = static_cast<ExprEngine *>(
-      getState()->getStateManager().getOwningEngine());
+  SubEngine *Engine = getState()->getStateManager().getOwningEngine();
+  AnalyzerOptions &Opts = Engine->getAnalysisManager().options;
 
-  //Try to get CTU definition only if CTUDir is provided.
-  if (!Engine->getAnalysisManager().options.naiveCTUEnabled())
+  // Try to get CTU definition only if CTUDir is provided.
+  if (!Opts.naiveCTUEnabled())
     return RuntimeDefinition();
 
   cross_tu::CrossTranslationUnitContext &CTUCtx =
-      Engine->getCrossTranslationUnitContext();
+      *Engine->getCrossTranslationUnitContext();
   llvm::Expected<const FunctionDecl *> CTUDeclOrError =
-      CTUCtx.getCrossTUDefinition(
-          FD, Engine->getAnalysisManager().options.getCTUDir(),
-          "externalFnMap.txt");
+      CTUCtx.getCrossTUDefinition(FD, Opts.getCTUDir(), Opts.getCTUIndexName());
 
   if (!CTUDeclOrError) {
     handleAllErrors(CTUDeclOrError.takeError(),
