@@ -1158,7 +1158,9 @@ CallEventRef<>
 CallEventManager::getCaller(const StackFrameContext *CalleeCtx,
                             ProgramStateRef State) {
   const LocationContext *ParentCtx = CalleeCtx->getParent();
-  const LocationContext *CallerCtx = ParentCtx->getCurrentStackFrame();
+  const LocationContext *CallerCtx = ParentCtx;
+  if (isa<BlockInvocationContext>(CallerCtx))
+    CallerCtx = CallerCtx->getParent();
   assert(CallerCtx && "This should not be used for top-level stack frames");
 
   const Stmt *CallSite = CalleeCtx->getCallSite();

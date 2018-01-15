@@ -373,7 +373,6 @@ int num_steps_over_limit3() {
   return 0;
 }
 
-
 void pr34943() {
   for (int i = 0; i < 6L; ++i) {
     clang_analyzer_numTimesReached(); // expected-warning {{6}}

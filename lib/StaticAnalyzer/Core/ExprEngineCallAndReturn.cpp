@@ -226,8 +226,9 @@ void ExprEngine::processCallExit(ExplodedNode *CEBNode) {
 
   // The parent context might not be a stack frame, so make sure we
   // look up the first enclosing stack frame.
-  const StackFrameContext *callerCtx =
-    calleeCtx->getParent()->getCurrentStackFrame();
+  const LocationContext *callerCtx = calleeCtx->getParent();
+  if (isa<BlockInvocationContext>(callerCtx))
+    callerCtx = callerCtx->getParent();
 
   const Stmt *CE = calleeCtx->getCallSite();
   ProgramStateRef state = CEBNode->getState();
@@ -407,14 +408,14 @@ bool ExprEngine::inlineCall(const CallEvent &Call, const Decl *D,
   assert(D);
 
   const LocationContext *CurLC = Pred->getLocationContext();
-  const StackFrameContext *CallerSFC = CurLC->getCurrentStackFrame();
-  const LocationContext *ParentOfCallee = CallerSFC;
+
+  const LocationContext *ParentOfCallee = CurLC;
   if (Call.getKind() == CE_Block &&
       !cast<BlockCall>(Call).isConversionFromLambda()) {
     const BlockDataRegion *BR = cast<BlockCall>(Call).getBlockRegion();
     assert(BR && "If we have the block definition we should have its region");
     AnalysisDeclContext *BlockCtx = AMgr.getAnalysisDeclContext(D);
-    ParentOfCallee = BlockCtx->getBlockInvocationContext(CallerSFC,
+    ParentOfCallee = BlockCtx->getBlockInvocationContext(CurLC,
                                                          cast<BlockDecl>(D),
                                                          BR);
   }
