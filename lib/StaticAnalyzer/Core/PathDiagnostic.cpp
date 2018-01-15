@@ -578,11 +578,17 @@ getLocationForCaller(const StackFrameContext *SFC,
     const CFGNewAllocator &Alloc = Source.castAs<CFGNewAllocator>();
     return PathDiagnosticLocation(Alloc.getAllocatorExpr(), SM, CallerCtx);
   }
+  case CFGElement::LoopEntrance: {
+    const Stmt *LoopStmt = Source.castAs<CFGLoopEntrance>().getLoopStmt();
+    return PathDiagnosticLocation(LoopStmt, SM, CallerCtx);
+  }
+  case CFGElement::LoopExit: {
+    const Stmt *LoopStmt = Source.castAs<CFGLoopExit>().getLoopStmt();
+    return PathDiagnosticLocation::createEnd(LoopStmt, SM, CallerCtx);
+  }
   case CFGElement::TemporaryDtor:
     llvm_unreachable("not yet implemented!");
   case CFGElement::LifetimeEnds:
-  case CFGElement::LoopExit:
-  case CFGElement::LoopEntrance:
     llvm_unreachable("CFGElement kind should not be on callsite!");
   }
 
@@ -743,6 +749,10 @@ const Stmt *PathDiagnosticLocation::getStmt(const ExplodedNode *N) {
     return CEE->getCalleeContext()->getCallSite();
   if (Optional<PostInitializer> PIPP = P.getAs<PostInitializer>())
     return PIPP->getInitializer()->getInit();
+  if (Optional<LoopEnter> LE = P.getAs<LoopEnter>())
+    return LE->getLoopStmt();
+  if (Optional<LoopExit> LE = P.getAs<LoopExit>())
+    return LE->getLoopStmt();
 
   return nullptr;
 }

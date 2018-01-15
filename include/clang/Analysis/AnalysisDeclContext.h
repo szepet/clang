@@ -36,6 +36,7 @@ class PseudoConstantAnalysis;
 class LocationContextManager;
 class StackFrameContext;
 class BlockInvocationContext;
+class LoopContext;
 class AnalysisDeclContextManager;
 class LocationContext;
 
@@ -185,7 +186,10 @@ public:
                                          const Stmt *S,
                                          const CFGBlock *Blk,
                                          unsigned Idx);
-  
+
+  const LoopContext *getLoopContext(const LocationContext *Parent,
+                                    const Stmt *LoopStmt);
+
   const BlockInvocationContext *
   getBlockInvocationContext(const LocationContext *parent,
                             const BlockDecl *BD,
@@ -214,7 +218,7 @@ private:
 
 class LocationContext : public llvm::FoldingSetNode {
 public:
-  enum ContextKind { StackFrame, Scope, Block };
+  enum ContextKind { StackFrame, Scope, Block, Loop };
 
 private:
   ContextKind Kind;
@@ -259,6 +263,8 @@ public:
   }
 
   const StackFrameContext *getCurrentStackFrame() const;
+
+  const LoopContext *getCurrentLoop() const;
 
   /// Return true if the current LocationContext has no caller context.
   virtual bool inTopFrame() const;
@@ -317,6 +323,31 @@ public:
 
   static bool classof(const LocationContext *Ctx) {
     return Ctx->getKind() == StackFrame;
+  }
+};
+
+class LoopContext : public LocationContext {
+  const Stmt *LoopStmt;
+
+  friend class LocationContextManager;
+  LoopContext(AnalysisDeclContext *Ctx, const LocationContext *Parent,
+              const Stmt *LS)
+      : LocationContext(Loop, Ctx, Parent), LoopStmt(LS) {}
+
+public:
+  ~LoopContext() override {}
+
+  const Stmt *getLoopStmt() const { return LoopStmt; }
+
+  void Profile(llvm::FoldingSetNodeID &ID) override;
+
+  static void Profile(llvm::FoldingSetNodeID &ID, AnalysisDeclContext *Ctx,
+                      const LocationContext *Parent, const Stmt *LS) {
+    ProfileCommon(ID, Scope, Ctx, Parent, LS);
+  }
+
+  static bool classof(const LocationContext *Ctx) {
+    return Ctx->getKind() == Loop;
   }
 };
 
@@ -390,7 +421,11 @@ public:
   const ScopeContext *getScope(AnalysisDeclContext *ctx,
                                const LocationContext *parent,
                                const Stmt *s);
-  
+
+  const LoopContext *getLoopContext(AnalysisDeclContext *Ctx,
+                                    const LocationContext *Parent,
+                                    const Stmt *LoopStmt);
+
   const BlockInvocationContext *
   getBlockInvocationContext(AnalysisDeclContext *ctx,
                             const LocationContext *parent,

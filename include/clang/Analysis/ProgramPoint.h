@@ -84,6 +84,7 @@ public:
               PostImplicitCallKind,
               MinImplicitCallKind = PreImplicitCallKind,
               MaxImplicitCallKind = PostImplicitCallKind,
+              LoopEnterKind,
               LoopExitKind,
               EpsilonKind};
 
@@ -670,12 +671,31 @@ private:
   }
 };
 
+/// Represents a point when we enter a loop.
+/// When this ProgramPoint is encountered we can be sure that the symbolic
+/// execution of the corresponding LoopStmt will be done.
+class LoopEnter : public ProgramPoint {
+public:
+  LoopEnter(const Stmt *LoopStmt, const LocationContext *LC)
+      : ProgramPoint(LoopStmt, nullptr, LoopEnterKind, LC) {}
+
+  const Stmt *getLoopStmt() const {
+    return static_cast<const Stmt *>(getData1());
+  }
+
+private:
+  friend class ProgramPoint;
+  LoopEnter() {}
+  static bool isKind(const ProgramPoint &Location) {
+    return Location.getKind() == LoopEnterKind;
+  }
+};
+
 /// Represents a point when we exit a loop.
 /// When this ProgramPoint is encountered we can be sure that the symbolic
 /// execution of the corresponding LoopStmt is finished on the given path.
 /// Note: It is possible to encounter a LoopExit element when we haven't even
-/// encountered the loop itself. At the current state not all loop exits will
-/// result in a LoopExit program point.
+/// encountered the loop itself.
 class LoopExit : public ProgramPoint {
 public:
     LoopExit(const Stmt *LoopStmt, const LocationContext *LC)
