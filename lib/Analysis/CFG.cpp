@@ -55,6 +55,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <memory>
+#include <queue>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -653,6 +654,8 @@ private:
 
   CFGBlock *addInitializer(CXXCtorInitializer *I);
   void addLoopExit(const Stmt *LoopStmt);
+  void addLoopExit(const Stmt *FromStmt, const Stmt *ToStmt);
+
   void addAutomaticObjDtors(LocalScope::const_iterator B,
                             LocalScope::const_iterator E, Stmt *S);
   void addLifetimeEnds(LocalScope::const_iterator B,
@@ -1317,12 +1320,58 @@ static QualType getReferenceInitTemporaryType(ASTContext &Context,
 }
 
 // TODO: Support adding LoopExit element to the CFG in case where the loop is
-// ended by ReturnStmt, GotoStmt or ThrowExpr.
+// ended by an IndirectGotoStmt or ThrowExpr. Since this element is consumed
+// only by the Static Analyzer which does not support modeling of ThrowExpr
+// yet, it does not causes any problem.
 void CFGBuilder::addLoopExit(const Stmt *LoopStmt){
   if(!BuildOpts.AddLoopExit)
     return;
   autoCreateBlock();
   appendLoopExit(Block, LoopStmt);
+}
+
+llvm::SmallSetVector<const Stmt *, 4>
+collectContainingLoops(const Stmt *S, ASTContext &ASTCtx) {
+  llvm::SmallSetVector<const Stmt *, 4> LoopStmts;
+
+  if (!S)
+    return LoopStmts;
+
+  std::queue<ast_type_traits::DynTypedNode> NodesToVisit;
+  NodesToVisit.push(ast_type_traits::DynTypedNode::create(*S));
+
+  while (!NodesToVisit.empty()) {
+    ast_type_traits::DynTypedNode Node = NodesToVisit.front();
+    NodesToVisit.pop();
+
+    for (auto &Parent : ASTCtx.getParents(Node)) {
+      NodesToVisit.push(Parent);
+    }
+
+    const Stmt *LoopStmt = Node.get<Stmt>();
+    if (LoopStmt && (isa<ForStmt>(LoopStmt) || isa<WhileStmt>(LoopStmt) ||
+                     isa<DoStmt>(LoopStmt)))
+      LoopStmts.insert(LoopStmt);
+  }
+  return LoopStmts;
+}
+
+void CFGBuilder::addLoopExit(const Stmt *FromStmt, const Stmt *ToStmt) {
+  if (!BuildOpts.AddLoopExit)
+    return;
+
+  llvm::SmallSetVector<const Stmt *, 4> FromLoopStmts =
+      collectContainingLoops(FromStmt, *Context);
+
+  llvm::SmallSetVector<const Stmt *, 4> ToLoopStmts =
+      collectContainingLoops(ToStmt, *Context);
+
+  FromLoopStmts.set_subtract(ToLoopStmts);
+  for (llvm::SmallSetVector<const Stmt *, 4>::reverse_iterator
+           I = FromLoopStmts.rbegin(),
+           E = FromLoopStmts.rend();
+       I != E; ++I)
+    appendLoopExit(Block, *I);
 }
 
 void CFGBuilder::addAutomaticObjHandling(LocalScope::const_iterator B,
@@ -2524,7 +2573,9 @@ CFGBlock *CFGBuilder::VisitReturnStmt(ReturnStmt *R) {
 
   // Add the return statement to the block.  This may create new blocks if R
   // contains control-flow (short-circuit operations).
-  return VisitStmt(R, AddStmtChoice::AlwaysAdd);
+  CFGBlock* ReturnBlock = VisitStmt(R, AddStmtChoice::AlwaysAdd);
+  addLoopExit(R, nullptr);
+  return ReturnBlock;
 }
 
 CFGBlock *CFGBuilder::VisitSEHExceptStmt(SEHExceptStmt *ES) {
@@ -2710,6 +2761,7 @@ CFGBlock *CFGBuilder::VisitGotoStmt(GotoStmt *G) {
     addAutomaticObjHandling(ScopePos, JT.scopePosition, G);
     addSuccessor(Block, JT.block);
   }
+  addLoopExit(G, G->getLabel()->getStmt());
 
   return Block;
 }

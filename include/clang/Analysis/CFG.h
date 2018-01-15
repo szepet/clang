@@ -177,10 +177,15 @@ private:
 
 /// Represents the point where a loop ends.
 /// This element is is only produced when building the CFG for the static
-/// analyzer and hidden behind the 'cfg-loopexit' analyzer config flag.
+/// analyzer and hidden behind the 'cfg-loopexit' analyzer config flag. It is
+/// placed at the beginning of the block after the loop, however, in special
+/// cases it can appear different positions:
+/// - Right before a ReturnStmt inside the loop
+/// - In the end of a goto terminated block (inside the loop as well)
 ///
-/// Note: a loop exit element can be reached even when the loop body was never
-/// entered.
+/// Note: whenever a loop is entered a loop exit element will be encountered
+/// after leaving it. However, a loop exit element can be reached even when the
+/// loop body was never entered.
 class CFGLoopExit : public CFGElement {
 public:
   explicit CFGLoopExit(const Stmt *stmt) : CFGElement(LoopExit, stmt) {}
