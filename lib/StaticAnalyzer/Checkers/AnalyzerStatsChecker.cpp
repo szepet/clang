@@ -128,6 +128,9 @@ void AnalyzerStatsChecker::checkEndAnalysis(ExplodedGraph &G,
       llvm::raw_svector_ostream outputI(bufI);
       outputI << "(" << NameOfRootFunction << ")" <<
                  ": The analyzer generated a sink at this point";
+      if(CS->getStmt() == nullptr || CS->getStmt()->getStmtClass() == Stmt::NoStmtClass)
+        llvm::errs() << "DUDE NULLPTR " << CS->getKind() << "  " << CE.getKind() << " \n" ;
+      assert(CS->getStmt());
       B.EmitBasicReport(
           D, this, "Sink Point", "Internal Statistics", outputI.str(),
           PathDiagnosticLocation::createBegin(CS->getStmt(), SM, LC));

@@ -1645,6 +1645,7 @@ static const Stmt *getTerminatorCondition(const CFGBlock *B) {
 }
 
 static const char StrEnteringLoop[] = "Entering loop body";
+static const char StrExitingLoop[] = "Exiting loop body";
 static const char StrLoopBodyZero[] = "Loop body executed 0 times";
 static const char StrLoopRangeEmpty[] =
   "Loop body skipped when range is empty";
@@ -1662,7 +1663,6 @@ static bool GenerateAlternateExtensivePathDiagnostic(
   InterestingExprs IE;
 
   PathDiagnosticLocation PrevLoc = PD.getLocation();
-
   const ExplodedNode *NextNode = N->getFirstPred();
   while (NextNode) {
     N = NextNode;
@@ -1670,6 +1670,7 @@ static bool GenerateAlternateExtensivePathDiagnostic(
     ProgramPoint P = N->getLocation();
 
     do {
+
       // Have we encountered an entrance to a call?  It may be
       // the case that we have not encountered a matching
       // call exit before this point.  This means that the path
@@ -1737,10 +1738,29 @@ static bool GenerateAlternateExtensivePathDiagnostic(
       PDB.LC = N->getLocationContext();
 
       // Record the mapping from the active path to the location
-      // context.
+      // context
       assert(!LCM[&PD.getActivePath()] ||
              LCM[&PD.getActivePath()] == PDB.LC);
       LCM[&PD.getActivePath()] = PDB.LC;
+
+
+      if (Optional<LoopExit> LE = P.getAs<LoopExit>()) {
+        PathDiagnosticLocation L(LE->getLoopStmt(), SM, PDB.LC);
+       auto E = std::make_shared<PathDiagnosticEventPiece>(L,"Exited loop");
+       E->setPrunable(true);
+       addEdgeToPath(PD.getActivePath(), PrevLoc, E->getLocation(), PDB.LC);
+       const LoopContext *LoopCtx =
+            PDB.LC->getAnalysisDeclContext()->getLoopContext(PDB.LC, LE->getLoopStmt());
+       LCM[&PD.getActivePath()] = LoopCtx;
+      }
+
+      if (Optional<LoopEnter> LE = P.getAs<LoopEnter>()) {
+        PathDiagnosticLocation L(LE->getLoopStmt(), SM, PDB.LC);
+        auto E = std::make_shared<PathDiagnosticEventPiece>(L,"Entered loop");
+        E->setPrunable(true);
+        addEdgeToPath(PD.getActivePath(), PrevLoc, E->getLocation(), PDB.LC);
+        LCM[&PD.getActivePath()] = PDB.LC->getParent();
+      }
 
       // Have we encountered an exit from a function call?
       if (Optional<CallExitEnd> CE = P.getAs<CallExitEnd>()) {
@@ -1880,6 +1900,7 @@ static bool GenerateAlternateExtensivePathDiagnostic(
         }
         break;
       }
+
     } while (0);
 
     if (!NextNode)
@@ -3177,7 +3198,6 @@ bool GRBugReporter::generatePathDiagnostic(PathDiagnostic& PD,
       // Make sure we get a clean location context map so we don't
       // hold onto old mappings.
       LCM.clear();
-
       switch (ActiveScheme) {
       case PathDiagnosticConsumer::AlternateExtensive:
         GenerateAlternateExtensivePathDiagnostic(PD, PDB, N, LCM, visitors);
