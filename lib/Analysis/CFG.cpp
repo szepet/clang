@@ -655,6 +655,8 @@ private:
   CFGBlock *addInitializer(CXXCtorInitializer *I);
   void addLoopExit(const Stmt *LoopStmt);
   void addLoopExit(const Stmt *FromStmt, const Stmt *ToStmt);
+  void addLoopEntrance(const Stmt *LoopStmt);
+  void addLoopEntrance(const Stmt *FromStmt, const Stmt *ToStmt);
 
   void addAutomaticObjDtors(LocalScope::const_iterator B,
                             LocalScope::const_iterator E, Stmt *S);
@@ -715,6 +717,10 @@ private:
 
   void appendLoopExit(CFGBlock *B, const Stmt *LoopStmt) {
     B->appendLoopExit(LoopStmt, cfg->getBumpVectorContext());
+  }
+
+  void appendLoopEntrance(CFGBlock *B, const Stmt *LoopStmt) {
+    B->appendLoopEntrance(LoopStmt, cfg->getBumpVectorContext());
   }
 
   void appendDeleteDtor(CFGBlock *B, CXXRecordDecl *RD, CXXDeleteExpr *DE) {
@@ -1356,6 +1362,24 @@ collectContainingLoops(const Stmt *S, ASTContext &ASTCtx) {
   return LoopStmts;
 }
 
+void CFGBuilder::addLoopEntrance(const Stmt *FromStmt, const Stmt *ToStmt) {
+  if (!BuildOpts.AddLoopExit)
+    return;
+
+  llvm::SmallSetVector<const Stmt *, 4> FromLoopStmts =
+      collectContainingLoops(FromStmt, *Context);
+
+  llvm::SmallSetVector<const Stmt *, 4> ToLoopStmts =
+      collectContainingLoops(ToStmt, *Context);
+
+  ToLoopStmts.set_subtract(FromLoopStmts);
+  for (llvm::SmallSetVector<const Stmt *, 4>::reverse_iterator
+           I = ToLoopStmts.rbegin(),
+           E = ToLoopStmts.rend();
+       I != E; ++I)
+    appendLoopEntrance(Block, *I);
+}
+
 void CFGBuilder::addLoopExit(const Stmt *FromStmt, const Stmt *ToStmt) {
   if (!BuildOpts.AddLoopExit)
     return;
@@ -1372,6 +1396,13 @@ void CFGBuilder::addLoopExit(const Stmt *FromStmt, const Stmt *ToStmt) {
            E = FromLoopStmts.rend();
        I != E; ++I)
     appendLoopExit(Block, *I);
+}
+
+void CFGBuilder::addLoopEntrance(const Stmt *LoopStmt) {
+  if (!BuildOpts.AddLoopExit)
+    return;
+  autoCreateBlock();
+  appendLoopEntrance(Block, LoopStmt);
 }
 
 void CFGBuilder::addAutomaticObjHandling(LocalScope::const_iterator B,
@@ -2762,6 +2793,7 @@ CFGBlock *CFGBuilder::VisitGotoStmt(GotoStmt *G) {
     addSuccessor(Block, JT.block);
   }
   addLoopExit(G, G->getLabel()->getStmt());
+  addLoopEntrance(G, G->getLabel()->getStmt());
 
   return Block;
 }
@@ -2917,7 +2949,7 @@ CFGBlock *CFGBuilder::VisitForStmt(ForStmt *F) {
 
   // Link up the loop-back block to the entry condition block.
   addSuccessor(TransitionBlock, EntryConditionBlock);
-  
+
   // The condition block is the implicit successor for any code above the loop.
   Succ = EntryConditionBlock;
 
@@ -2925,14 +2957,17 @@ CFGBlock *CFGBuilder::VisitForStmt(ForStmt *F) {
   // statements.  This block can also contain statements that precede the loop.
   if (Stmt *I = F->getInit()) {
     Block = createBlock();
-    return addStmt(I);
+    CFGBlock *InitBlock = addStmt(I);
+    addLoopEntrance(F);
+    return InitBlock;
   }
 
   // There is no loop initialization.  We are thus basically a while loop.
   // NULL out Block to force lazy block construction.
   Block = nullptr;
   Succ = EntryConditionBlock;
-  return EntryConditionBlock;
+  addLoopEntrance(F);
+  return (Block ? Block : Succ);
 }
 
 CFGBlock *CFGBuilder::VisitMemberExpr(MemberExpr *M, AddStmtChoice asc) {
@@ -3236,7 +3271,8 @@ CFGBlock *CFGBuilder::VisitWhileStmt(WhileStmt *W) {
 
   // Return the condition block, which is the dominating block for the loop.
   Succ = EntryConditionBlock;
-  return EntryConditionBlock;
+  addLoopEntrance(W);
+  return (Block ? Block : Succ);
 }
 
 CFGBlock *CFGBuilder::VisitObjCAtCatchStmt(ObjCAtCatchStmt *S) {
@@ -3385,7 +3421,8 @@ CFGBlock *CFGBuilder::VisitDoStmt(DoStmt *D) {
 
   // Return the loop body, which is the dominating block for the loop.
   Succ = BodyBlock;
-  return BodyBlock;
+  addLoopEntrance(D);
+  return (Block ? Block : Succ);
 }
 
 CFGBlock *CFGBuilder::VisitContinueStmt(ContinueStmt *C) {
@@ -4266,6 +4303,7 @@ CFGImplicitDtor::getDestructorDecl(ASTContext &astContext) const {
     case CFGElement::Initializer:
     case CFGElement::NewAllocator:
     case CFGElement::LoopExit:
+    case CFGElement::LoopEntrance:
     case CFGElement::LifetimeEnds:
       llvm_unreachable("getDestructorDecl should only be used with "
                        "ImplicitDtors");
@@ -4679,6 +4717,9 @@ static void print_elem(raw_ostream &OS, StmtPrinterHelper &Helper,
     Helper.handleDecl(VD, OS);
 
     OS << " (Lifetime ends)\n";
+  } else if (Optional<CFGLoopEntrance> LE = E.getAs<CFGLoopEntrance>()) {
+    const Stmt *LoopStmt = LE->getLoopStmt();
+    OS << LoopStmt->getStmtClassName() << " (LoopEntrance)\n";
   } else if (Optional<CFGLoopExit> LE = E.getAs<CFGLoopExit>()) {
     const Stmt *LoopStmt = LE->getLoopStmt();
     OS << LoopStmt->getStmtClassName() << " (LoopExit)\n";
