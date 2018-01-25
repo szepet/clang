@@ -15,9 +15,42 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/StaticAnalyzer/Core/PathSensitive/LoopWidening.h"
+#include "clang/AST/AST.h"
+#include "clang/ASTMatchers/ASTMatchers.h"
+#include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
+#include "llvm/ADT/SmallSet.h"
+
+/*
+struct LoopState {
+private:
+  enum Kind { Normal, Widened } K;
+  LoopState(Kind InK) : K(InK){}
+
+public:
+  static LoopState getNormal(unsigned N) { return LoopState(Normal); }
+  static LoopState getWidened(unsigned N) { return LoopState(Widened); }
+  bool isWidened() const { return K == Widened; }
+  bool operator==(const LoopState &X) const {
+    return K == X.K;
+  }
+  void Profile(llvm::FoldingSetNodeID &ID) const {
+    ID.AddInteger(K);
+  }
+};
+*/
+// The map of the currently simulated loops which are marked depending if we
+// decided to unroll them.
+
+
 
 using namespace clang;
 using namespace ento;
+using namespace clang::ast_matchers;
+
+
+REGISTER_SET_WITH_PROGRAMSTATE(WidenedLoopSet, const LoopContext *)
 
 /// Return the loops condition Stmt or NULL if LoopStmt is not a loop
 static const Expr *getLoopCondition(const Stmt *LoopStmt) {
@@ -33,35 +66,106 @@ static const Expr *getLoopCondition(const Stmt *LoopStmt) {
   }
 }
 
+static internal::Matcher<Stmt> callByRef(StringRef NodeName) {
+  return callExpr(forEachArgumentWithParam(
+      expr().bind(NodeName),
+      parmVarDecl(hasType(references(qualType(unless(isConstQualified())))))));
+}
+
+static internal::Matcher<Stmt> cxxNonConstCall(StringRef NodeName) {
+  return anyOf(cxxMemberCallExpr(on(expr().bind("changedExpr")),
+                                 unless(callee(cxxMethodDecl(isConst())))),
+               cxxOperatorCallExpr(
+                   hasArgument(0, ignoringImpCasts(expr().bind(NodeName))),
+                   unless(callee(cxxMethodDecl(isConst())))));
+}
+static internal::Matcher<Stmt> changedByAssignement(StringRef NodeName) {
+  return binaryOperator(
+      anyOf(hasOperatorName("="), hasOperatorName("+="), hasOperatorName("/="),
+            hasOperatorName("*="), hasOperatorName("-="), hasOperatorName("%="),
+            hasOperatorName("&="), hasOperatorName("|="), hasOperatorName("^="),
+            hasOperatorName("<<="), hasOperatorName(">>=")),
+      hasLHS(ignoringParenImpCasts(expr().bind(NodeName))));
+}
+static internal::Matcher<Stmt>
+changedByIncrementOrDecrement(StringRef NodeName) {
+  return unaryOperator(
+      anyOf(hasOperatorName("--"), hasOperatorName("++")),
+      hasUnaryOperand(ignoringParenImpCasts(expr().bind(NodeName))));
+}
+
+static internal::Matcher<Stmt> changeVariable() {
+  return anyOf(changedByIncrementOrDecrement("changedExpr"),
+               changedByAssignement("changedExpr"), callByRef("changedExpr"),
+               cxxNonConstCall("changedExpr"));
+}
+
 namespace clang {
 namespace ento {
 
-ProgramStateRef getWidenedLoopState(ProgramStateRef PrevState,
+bool collectRegion(const Expr *E,
+                   llvm::SmallSet<const MemRegion *, 16> &RegionsToInvalidate,
+                   ProgramStateRef State, const LocationContext *LCtx) {
+  const VarDecl *VD = nullptr;
+  while (true) {
+    E = E->IgnoreParenImpCasts();
+    switch (E->getStmtClass()) {
+    case Stmt::DeclRefExprClass:
+      VD = dyn_cast<VarDecl>(cast<DeclRefExpr>(E)->getDecl());
+      if (!VD || VD->getType()->isAnyPointerType() ||
+          VD->getType()->isReferenceType())
+        return false;
+      RegionsToInvalidate.insert(State->getLValue(VD, LCtx).getAsRegion());
+      return true;
+    case Stmt::MemberExprClass:
+      E = cast<MemberExpr>(E)->getBase();
+      break;
+    case Stmt::CXXDependentScopeMemberExprClass:
+      E = cast<CXXDependentScopeMemberExpr>(E)->getBase();
+      break;
+    case Stmt::ArraySubscriptExprClass:
+      E = cast<ArraySubscriptExpr>(E)->getBase();
+      break;
+    default:
+      return false;
+    }
+  }
+}
+
+ProgramStateRef getWidenedLoopState(ProgramStateRef State, ASTContext &ASTCtx,
                                     const LocationContext *LCtx,
                                     unsigned BlockCount, const Stmt *LoopStmt) {
 
-  assert(isa<ForStmt>(LoopStmt) || isa<WhileStmt>(LoopStmt) ||
-         isa<DoStmt>(LoopStmt));
-
-  // Invalidate values in the current state.
-  // TODO Make this more conservative by only invalidating values that might
-  //      be modified by the body of the loop.
-  // TODO Nested loops are currently widened as a result of the invalidation
-  //      being so inprecise. When the invalidation is improved, the handling
-  //      of nested loops will also need to be improved.
-  const StackFrameContext *STC = LCtx->getCurrentStackFrame();
-  MemRegionManager &MRMgr = PrevState->getStateManager().getRegionManager();
-  const MemRegion *Regions[] = {MRMgr.getStackLocalsRegion(STC),
-                                MRMgr.getStackArgumentsRegion(STC),
-                                MRMgr.getGlobalsRegion()};
-  RegionAndSymbolInvalidationTraits ITraits;
-  for (auto *Region : Regions) {
-    ITraits.setTrait(Region,
-                     RegionAndSymbolInvalidationTraits::TK_EntireMemSpace);
+  llvm::SmallSet<const MemRegion *, 16> RegionsToInvalidate;
+  auto Matches = match(findAll(changeVariable()), *LoopStmt, ASTCtx);
+  for (auto &Match : Matches) {
+    auto E = Match.getNodeAs<Expr>("changedExpr");
+    bool Success = collectRegion(E, RegionsToInvalidate, State, LCtx);
+    if (!Success)
+      return State;
   }
-  return PrevState->invalidateRegions(Regions, getLoopCondition(LoopStmt),
-                                      BlockCount, LCtx, true, nullptr, nullptr,
-                                      &ITraits);
+
+  auto WLS = State->get<WidenedLoopSet>();
+  const LoopContext* LoopCtx = LCtx->getCurrentLoop();
+  assert(LoopCtx && LoopCtx->getLoopStmt() == LoopStmt);
+  assert(!WLS.contains(LoopCtx));
+
+  State = State->add<WidenedLoopSet>(LoopCtx);
+
+  llvm::SmallVector<const MemRegion *, 16> Regions;
+  Regions.reserve(RegionsToInvalidate.size());
+  for (auto E : RegionsToInvalidate)
+    Regions.push_back(E);
+
+  return State->invalidateRegions(llvm::makeArrayRef(Regions),
+                                  getLoopCondition(LoopStmt), BlockCount, LCtx,
+                                  true);
+}
+
+bool isWidenedLoopContext(const LoopContext* LC, ProgramStateRef State) {
+  if (!State)
+    return false;
+  return State->contains<WidenedLoopSet>(LC);
 }
 
 } // end namespace ento

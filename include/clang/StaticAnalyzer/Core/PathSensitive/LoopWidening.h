@@ -26,9 +26,11 @@ namespace ento {
 ///
 /// Widen the loop by invalidating anything that might be modified
 /// by the loop body in any iteration.
-ProgramStateRef getWidenedLoopState(ProgramStateRef PrevState,
+ProgramStateRef getWidenedLoopState(ProgramStateRef State, ASTContext &ASTCtx,
                                     const LocationContext *LCtx,
                                     unsigned BlockCount, const Stmt *LoopStmt);
+
+bool isWidenedLoopContext(const LoopContext* LC, ProgramStateRef State);
 
 } // end namespace ento
 } // end namespace clang

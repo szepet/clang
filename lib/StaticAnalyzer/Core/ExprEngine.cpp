@@ -1652,6 +1652,48 @@ bool ExprEngine::replayWithoutInlining(ExplodedNode *N,
   return true;
 }
 
+bool ExprEngine::replayWithWidening(ExplodedNode *N, const Stmt *LoopStmt,
+                                    unsigned BlockCount) {
+  while (N) {
+    N = N->pred_empty() ? nullptr : *(N->pred_begin());
+    assert(N && "Reaching the root without finding the previous step of the loop");
+    ProgramPoint L = N->getLocation();
+    if (!L.getAs<BlockEntrance>())
+      continue;
+    if (Optional<BlockEntrance> BE = L.getAs<BlockEntrance>())
+      if(BE->getBlock()->getTerminator() != LoopStmt)
+        continue;
+    break;
+  }
+  // TODO: Clean up the unneeded nodes.
+  // Build an Epsilon node from which we will restart the analyzes.
+  ProgramPoint NewNodeLoc =
+      EpsilonPoint(N->getLocationContext(), LoopStmt);
+
+  // Note, changing the state ensures that we are not going to cache out.
+  llvm::errs() << "GETWIDEN REPLAY =============";
+  LoopStmt->dump();
+  ProgramStateRef NewNodeState = getWidenedLoopState(
+      N->getState(), AMgr.getASTContext(), N->getLocationContext(),
+      BlockCount, LoopStmt);
+
+  if(NewNodeState == N->getState())
+    return false;
+
+  bool IsNew = false;
+  ExplodedNode *NewNode = G.getNode(NewNodeLoc, NewNodeState, false, &IsNew);
+  // We cached out at this point.
+  if (!IsNew)
+    return true;
+
+  NewNode->addPredecessor(N, G);
+
+  // Add the new node to the work list.
+  ExplodedNodeSet Dst(NewNode);
+  Engine.enqueue(Dst);
+  return true;
+}
+
 /// Block entrance.  (Update counters).
 void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
                                          NodeBuilderWithSinks &nodeBuilder,
@@ -1694,14 +1736,33 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
       return;
     // Widen.
     const LocationContext *LCtx = Pred->getLocationContext();
-    ProgramStateRef WidenedState =
-        getWidenedLoopState(Pred->getState(), LCtx, BlockCount, Term);
+    if(isWidenedLoopContext(LCtx->getCurrentLoop(), Pred->getState()))
+      return;
+    llvm::errs() << "GETWIDEN =============";
+    Term->dump();
+    ProgramStateRef WidenedState = getWidenedLoopState(Pred->getState(),
+                                                       AMgr.getASTContext(),
+                                                       LCtx, BlockCount, Term);
     nodeBuilder.generateNode(WidenedState, Pred);
     return;
   }
 
   // FIXME: Refactor this into a checker.
   if (BlockCount >= AMgr.options.maxBlockVisitOnPath) {
+    if (AMgr.options.shouldWidenLoops()){
+      // Find the most outer unwidened loop.
+      const LoopContext *OuterLoopCtx = Pred->getLocationContext()->getCurrentLoop();
+      while(OuterLoopCtx && isWidenedLoopContext(OuterLoopCtx, Pred->getState()))
+        OuterLoopCtx = OuterLoopCtx->getParent()->getCurrentLoop();
+      if(OuterLoopCtx){
+        llvm::errs() << "\nCALLING REPLAY:\nCURRENT LOOP:\n";
+        Pred->getLocationContext()->getCurrentLoop()->getLoopStmt()->dump();
+        llvm::errs() << "OUTER LOOP:\n";
+        OuterLoopCtx->getLoopStmt()->dump();
+        replayWithWidening(Pred, OuterLoopCtx->getLoopStmt(), BlockCount);
+      }
+    }
+
     static SimpleProgramPointTag tag(TagProviderName, "Block count exceeded");
     const ExplodedNode *Sink =
                    nodeBuilder.generateSink(Pred->getState(), Pred, &tag);
