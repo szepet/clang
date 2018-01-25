@@ -620,6 +620,9 @@ private:
 
   bool replayWithoutInlining(ExplodedNode *P, const LocationContext *CalleeLC);
 
+  bool replayWithWidening(ExplodedNode *N, const Stmt *LoopStmt,
+                          unsigned BlockCount);
+
   /// Models a trivial copy or move constructor or trivial assignment operator
   /// call with a simple bind.
   void performTrivialCopy(NodeBuilder &Bldr, ExplodedNode *Pred,
