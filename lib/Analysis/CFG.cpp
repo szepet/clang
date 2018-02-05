@@ -3541,6 +3541,9 @@ CFGBlock *CFGBuilder::VisitSwitchStmt(SwitchStmt *Terminator) {
   if (!isa<CompoundStmt>(Terminator->getBody()))
     addLocalScopeAndDtors(Terminator->getBody());
 
+  // Add the terminator and condition in the switch block.
+  SwitchTerminatedBlock->setTerminator(Terminator);
+
   addStmt(Terminator->getBody());
   if (Block) {
     if (badCFG)
@@ -3561,7 +3564,8 @@ CFGBlock *CFGBuilder::VisitSwitchStmt(SwitchStmt *Terminator) {
                !SwitchAlwaysHasSuccessor);
 
   // Add the terminator and condition in the switch block.
-  SwitchTerminatedBlock->setTerminator(Terminator);
+  //SwitchTerminatedBlock->setTerminator(Terminator);
+
   Block = SwitchTerminatedBlock;
   CFGBlock *LastBlock = addStmt(Terminator->getCond());
 
@@ -3669,6 +3673,11 @@ CFGBlock *CFGBuilder::VisitCaseStmt(CaseStmt *CS) {
                shouldAddCase(switchExclusivelyCovered, switchCond,
                              CS, *Context));
 
+  //llvm::errs() << "SWITCH terminator print===============\n";
+  //SwitchTerminatedBlock->getTerminator()->dump();
+  //llvm::errs() << "Case STMT print===============\n";
+  //CS->dump();
+  addLoopEntrance(SwitchTerminatedBlock->getTerminator(), CS);
   // We set Block to NULL to allow lazy creation of a new block (if necessary)
   Block = nullptr;
 
