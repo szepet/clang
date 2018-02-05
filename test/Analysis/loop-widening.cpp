@@ -7,6 +7,9 @@ typedef __typeof(sizeof(int)) size_t;
 void *malloc(size_t);
 void free(void *);
 
+void passByRef(int &n);
+void passByConstRef(const int &n);
+
 void loop_which_iterates_limit_times_not_widened() {
   int i;
   int x = 1;
@@ -164,6 +167,50 @@ void nested_loop_outer_widen() {
   clang_analyzer_eval(i >= 10); // expected-warning {{TRUE}}
 }
 
+void doNotReplayFirstStepOfDoStmt() {
+  int i = 0, j = 0;
+  int k = 0;
+  do
+    for (;;)
+      for (;j < 10;j++)
+        k--;
+  while (k < 5);
+  clang_analyzer_warnIfReached(); // no-warning
+}
+
+void replayDoStmt() {
+  int i = 0, j = 0;
+  int k = 0;
+  do
+    for (;i < 10;i++)
+      for (;j < 10;j++)
+        k--;
+  while (k < 5);
+  clang_analyzer_eval(k >= 5); // expected-warning {{TRUE}}
+}
+
+void replayWhileStmt() {
+  int i = 0, j = 0;
+  int k = 0;
+  while(k < 5)
+    for (;;)
+      for (;j < 10;j++)
+        k--;
+  clang_analyzer_eval(k >= 5); // expected-warning {{TRUE}}
+}
+
+
+void doStmtBetweenSwitchCase() {
+  int k = 0;
+  switch(a_global){
+    do
+      case 4:
+        k++;
+        while(k<5);
+  }
+  clang_analyzer_eval(k >= 5 || k == 0); // expected-warning {{TRUE}}
+}
+
 void nested_loop_inner_widen() {
   int i = 0, j = 0;
   for (i = 0; i < 2; i++) {
@@ -280,9 +327,6 @@ void const_operator_call() {
   }
   clang_analyzer_eval(a.num == 42); // expected-warning {{TRUE}}
 }
-
-void passByRef(int &n);
-void passByConstRef(const int &n);
 
 void widen_escape() {
   int n = 2;

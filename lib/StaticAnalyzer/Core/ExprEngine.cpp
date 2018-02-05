@@ -608,8 +608,14 @@ void ExprEngine::ProcessLoopEntrance(const Stmt *LoopStmt, ExplodedNode *Pred) {
         CFGStmtMap *SM = CFGStmtMap::Build(OuterLoopCtx->getCFG(),&OuterLoopCtx->getParentMap());
         unsigned BlockCount = Engine.WList->getBlockCounter().getNumVisited(
                 OuterLoopCtx->getCurrentStackFrame(), SM->getBlock(OuterLoopCtx->getLoopStmt())->getBlockID());
-        if(!isa<DoStmt>(OuterLoopCtx->getLoopStmt()) && BlockCount == 1)
+        //llvm::errs() << "BlockCount:   " << BlockCount <<"\n";
+        //llvm::errs() << BlockCount << "\n";
+        //SM->getBlock(OuterLoopCtx->getLoopStmt())->dump();
+        if(!(isa<DoStmt>(OuterLoopCtx->getLoopStmt()) && BlockCount == 0)){
+    //      if(isa<DoStmt>(OuterLoopCtx->getLoopStmt()) && BlockCount != 0)
+    //        llvm::errs() << "FASZOM=============" << BlockCount << "\n";
           replayWithWidening(Pred, OuterLoopCtx, BlockCount);
+        }
       }
     }
   }
