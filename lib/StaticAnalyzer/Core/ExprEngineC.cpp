@@ -646,7 +646,8 @@ void ExprEngine::VisitLogicalExpr(const BinaryOperator* B, ExplodedNode *Pred,
   ExplodedNode *N = Pred;
   while (!N->getLocation().getAs<BlockEntrance>()) {
     ProgramPoint P = N->getLocation();
-    assert(P.getAs<PreStmt>()|| P.getAs<PreStmtPurgeDeadSymbols>());
+    assert(P.getAs<PreStmt>() || P.getAs<PreStmtPurgeDeadSymbols>() ||
+           P.getAs<EpsilonPoint>());
     (void) P;
     assert(N->pred_size() == 1);
     N = *N->pred_begin();
@@ -759,7 +760,7 @@ void ExprEngine::VisitGuardedExpr(const Expr *Ex,
   ProgramStateRef SrcState = state;
   for (const ExplodedNode *N = Pred ; N ; N = *N->pred_begin()) {
     ProgramPoint PP = N->getLocation();
-    if (PP.getAs<PreStmtPurgeDeadSymbols>() || PP.getAs<BlockEntrance>()) {
+    if (PP.getAs<PreStmtPurgeDeadSymbols>() || PP.getAs<BlockEntrance>() || PP.getAs<EpsilonPoint>()) {
       assert(N->pred_size() == 1);
       continue;
     }

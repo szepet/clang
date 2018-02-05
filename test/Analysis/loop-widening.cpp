@@ -31,12 +31,9 @@ void loop_evaluated_before_widening() {
   int i;
   a_global = 1;
   for (i = 0; i < 10; ++i) {
-    if (i == 2) {
-      // True before widening then unknown after.
-      clang_analyzer_eval(a_global == 1); // expected-warning{{TRUE}}
-    }
+    clang_analyzer_eval(a_global == 1); // expected-warning{{TRUE}}
   }
-  clang_analyzer_warnIfReached(); // expected-warning{{REACHABLE}}
+  clang_analyzer_eval(a_global == 1); // expected-warning{{TRUE}}
 }
 
 void warnings_after_loop() {
@@ -135,10 +132,10 @@ void pointer_doesnt_leak_from_loop() {
 int g_global;
 
 void unknown_after_loop(int s_arg) {
-  g_global = 0;
   s_arg = 1;
   int s_local = 2;
   int *h_ptr = (int *)malloc(sizeof(int));
+  g_global = 0;
   int change_var = 1;
   int nochange_var = 10;
   for (int i = 0; i < 10; ++i) {
@@ -148,10 +145,10 @@ void unknown_after_loop(int s_arg) {
   clang_analyzer_eval(change_var == 1);    // expected-warning {{UNKNOWN}}
   clang_analyzer_eval(nochange_var == 10); // expected-warning {{TRUE}}
 
-  clang_analyzer_eval(g_global);     // expected-warning {{UNKNOWN}}
-  clang_analyzer_eval(s_arg == 1);   // expected-warning {{TRUE}}
-  clang_analyzer_eval(s_local == 2); // expected-warning {{TRUE}}
-  clang_analyzer_eval(h_ptr == 0);   // expected-warning {{UNKNOWN}}
+  clang_analyzer_eval(g_global == 0);    // expected-warning {{TRUE}}
+  clang_analyzer_eval(s_arg == 1);       // expected-warning {{TRUE}}
+  clang_analyzer_eval(s_local == 2);     // expected-warning {{TRUE}}
+  clang_analyzer_eval(h_ptr == 0);       // expected-warning {{UNKNOWN}}
   free(h_ptr);
 }
 
@@ -221,7 +218,7 @@ void nested_loops_2() {
 
   // Precision loss of the inner loop variables resulted by the widening of the
   // outer loops.
-  clang_analyzer_eval(j >= 10); // expected-warning {{UNKNOWN}}
+  clang_analyzer_eval(j >= 10); // expected-warning {{UNKNOWN}} // expected-warning {{TRUE}}
   clang_analyzer_eval(k >= 42); // expected-warning {{UNKNOWN}}
 
   clang_analyzer_eval(x == 2); // expected-warning {{TRUE}}
@@ -254,7 +251,7 @@ void const_method_call() {
   clang_analyzer_eval(a.num == 42); // expected-warning {{TRUE}}
 }
 
-void knwon_method_call() {
+void known_method_call() {
   A a(42);
   A b(10);
   for (int i = 0; i < 10; ++i) {
@@ -336,4 +333,26 @@ void no_widen_pointer3() {
     *p = 2;
   }
   clang_analyzer_warnIfReached(); // no-warning
+}
+
+void no_widen_pointer4() {
+  int* x = new int(42);
+  clang_analyzer_eval(*x == 42); // expected-warning {{TRUE}}
+  for (int i = 0; i < 10; ++i) {
+    delete x;
+  }
+  clang_analyzer_warnIfReached(); // no-warning
+}
+
+bool call = true;
+void recursive_call() {
+  int i;
+  for(i = 0; i < 6; ++i){
+    if(call) {
+      call = false;
+      recursive_call();
+      call = true;
+    }
+  }
+  clang_analyzer_eval(i >= 6); // expected-warning {{TRUE}}
 }

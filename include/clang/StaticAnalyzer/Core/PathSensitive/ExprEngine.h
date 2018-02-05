@@ -620,7 +620,7 @@ private:
 
   bool replayWithoutInlining(ExplodedNode *P, const LocationContext *CalleeLC);
 
-  bool replayWithWidening(ExplodedNode *N, const Stmt *LoopStmt,
+  bool replayWithWidening(ExplodedNode *N, const LoopContext *LoopCtx,
                           unsigned BlockCount);
 
   /// Models a trivial copy or move constructor or trivial assignment operator

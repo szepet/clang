@@ -22,29 +22,6 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
 #include "llvm/ADT/SmallSet.h"
 
-/*
-struct LoopState {
-private:
-  enum Kind { Normal, Widened } K;
-  LoopState(Kind InK) : K(InK){}
-
-public:
-  static LoopState getNormal(unsigned N) { return LoopState(Normal); }
-  static LoopState getWidened(unsigned N) { return LoopState(Widened); }
-  bool isWidened() const { return K == Widened; }
-  bool operator==(const LoopState &X) const {
-    return K == X.K;
-  }
-  void Profile(llvm::FoldingSetNodeID &ID) const {
-    ID.AddInteger(K);
-  }
-};
-*/
-// The map of the currently simulated loops which are marked depending if we
-// decided to unroll them.
-
-
-
 using namespace clang;
 using namespace ento;
 using namespace clang::ast_matchers;
@@ -79,7 +56,7 @@ static internal::Matcher<Stmt> cxxNonConstCall(StringRef NodeName) {
                    hasArgument(0, ignoringImpCasts(expr().bind(NodeName))),
                    unless(callee(cxxMethodDecl(isConst())))));
 }
-static internal::Matcher<Stmt> changedByAssignement(StringRef NodeName) {
+static internal::Matcher<Stmt> changedByAssignment(StringRef NodeName) {
   return binaryOperator(
       anyOf(hasOperatorName("="), hasOperatorName("+="), hasOperatorName("/="),
             hasOperatorName("*="), hasOperatorName("-="), hasOperatorName("%="),
@@ -96,8 +73,8 @@ changedByIncrementOrDecrement(StringRef NodeName) {
 
 static internal::Matcher<Stmt> changeVariable() {
   return anyOf(changedByIncrementOrDecrement("changedExpr"),
-               changedByAssignement("changedExpr"), callByRef("changedExpr"),
-               cxxNonConstCall("changedExpr"));
+               changedByAssignment("changedExpr"), callByRef("changedExpr"),
+               cxxNonConstCall("changedExpr"), cxxDeleteExpr().bind("changedExpr"));
 }
 
 namespace clang {
@@ -126,6 +103,9 @@ bool collectRegion(const Expr *E,
     case Stmt::ArraySubscriptExprClass:
       E = cast<ArraySubscriptExpr>(E)->getBase();
       break;
+    case Stmt::CXXDeleteExprClass:
+      E = cast<CXXDeleteExpr>(E)->getArgument();
+      break;
     default:
       return false;
     }
@@ -135,6 +115,11 @@ bool collectRegion(const Expr *E,
 ProgramStateRef getWidenedLoopState(ProgramStateRef State, ASTContext &ASTCtx,
                                     const LocationContext *LCtx,
                                     unsigned BlockCount, const Stmt *LoopStmt) {
+  const LoopContext* LoopCtx = LCtx->getCurrentLoop();
+  assert(LoopCtx && LoopCtx->getLoopStmt() == LoopStmt);
+  assert(!isWidenedLoopContext(LoopCtx,State));
+
+  State = State->add<WidenedLoopSet>(LoopCtx);
 
   llvm::SmallSet<const MemRegion *, 16> RegionsToInvalidate;
   auto Matches = match(findAll(changeVariable()), *LoopStmt, ASTCtx);
@@ -144,13 +129,6 @@ ProgramStateRef getWidenedLoopState(ProgramStateRef State, ASTContext &ASTCtx,
     if (!Success)
       return State;
   }
-
-  auto WLS = State->get<WidenedLoopSet>();
-  const LoopContext* LoopCtx = LCtx->getCurrentLoop();
-  assert(LoopCtx && LoopCtx->getLoopStmt() == LoopStmt);
-  assert(!WLS.contains(LoopCtx));
-
-  State = State->add<WidenedLoopSet>(LoopCtx);
 
   llvm::SmallVector<const MemRegion *, 16> Regions;
   Regions.reserve(RegionsToInvalidate.size());
@@ -163,8 +141,7 @@ ProgramStateRef getWidenedLoopState(ProgramStateRef State, ASTContext &ASTCtx,
 }
 
 bool isWidenedLoopContext(const LoopContext* LC, ProgramStateRef State) {
-  if (!State)
-    return false;
+  assert(State);
   return State->contains<WidenedLoopSet>(LC);
 }
 
