@@ -27,6 +27,7 @@
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/PathDiagnostic.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExprEngine.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/LoopUnrolling.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
 #include "llvm/ADT/STLExtras.h"
@@ -1739,11 +1740,20 @@ static bool GenerateAlternateExtensivePathDiagnostic(
 
       // Record the mapping from the active path to the location
       // context
+      if(LCM[&PD.getActivePath()] &&
+             LCM[&PD.getActivePath()] != PDB.LC){
+        PD.getActivePath().dump();
+        LCM[&PD.getActivePath()]->dumpStack();
+        llvm::errs() << "============\n";
+        PDB.LC->dumpStack();
+      }
       assert(!LCM[&PD.getActivePath()] ||
              LCM[&PD.getActivePath()] == PDB.LC);
       LCM[&PD.getActivePath()] = PDB.LC;
 
       if (Optional<LoopExit> LE = P.getAs<LoopExit>()) {
+        if(!isPreciselyModelableLoop(LE->getLoopStmt(),N->getLocationContext()->getAnalysisDeclContext()->getASTContext()))
+          break;
         PathDiagnosticLocation L(LE->getLoopStmt(), SM, PDB.LC);
         auto E = std::make_shared<PathDiagnosticEventPiece>(L, "Exited loop");
         E->setPrunable(true);
@@ -1752,14 +1762,18 @@ static bool GenerateAlternateExtensivePathDiagnostic(
             PDB.LC->getAnalysisDeclContext()->getLoopContext(PDB.LC,
                                                              LE->getLoopStmt());
         LCM[&PD.getActivePath()] = LoopCtx;
+        break;
       }
 
       if (Optional<LoopEnter> LE = P.getAs<LoopEnter>()) {
+        if(!isPreciselyModelableLoop(LE->getLoopStmt(),N->getLocationContext()->getAnalysisDeclContext()->getASTContext()))
+          break;
         PathDiagnosticLocation L(LE->getLoopStmt(), SM, PDB.LC);
         auto E = std::make_shared<PathDiagnosticEventPiece>(L, "Entered loop");
         E->setPrunable(true);
         addEdgeToPath(PD.getActivePath(), PrevLoc, E->getLocation(), PDB.LC);
         LCM[&PD.getActivePath()] = PDB.LC->getParent();
+        break;
       }
 
       // Have we encountered an exit from a function call?

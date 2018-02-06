@@ -31,6 +31,8 @@ ProgramStateRef getWidenedLoopState(ProgramStateRef State, ASTContext &ASTCtx,
                                     unsigned BlockCount, const Stmt *LoopStmt);
 
 bool isWidenedLoopContext(const LoopContext* LC, ProgramStateRef State);
+ProgramStateRef markLoopAsNoWiden(const Stmt* LoopStmt, ProgramStateRef State);
+bool shouldWidenLoop(const LoopContext* LC, ProgramStateRef State);
 
 } // end namespace ento
 } // end namespace clang

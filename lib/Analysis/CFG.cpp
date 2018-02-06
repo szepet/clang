@@ -1365,14 +1365,16 @@ collectContainingLoops(const Stmt *S, ASTContext &ASTCtx) {
 void CFGBuilder::addLoopEntrance(const Stmt *FromStmt, const Stmt *ToStmt) {
   if (!BuildOpts.AddLoopExit)
     return;
-
   llvm::SmallSetVector<const Stmt *, 4> FromLoopStmts =
       collectContainingLoops(FromStmt, *Context);
-
+  //llvm::errs() << "FromSize: " << FromLoopStmts.size() << "\n";
   llvm::SmallSetVector<const Stmt *, 4> ToLoopStmts =
       collectContainingLoops(ToStmt, *Context);
-
+  //llvm::errs() << "ToSize: " << ToLoopStmts.size() << "\n";
   ToLoopStmts.set_subtract(FromLoopStmts);
+  if(ToLoopStmts.empty())
+    return;
+  autoCreateBlock();
   for (llvm::SmallSetVector<const Stmt *, 4>::reverse_iterator
            I = ToLoopStmts.rbegin(),
            E = ToLoopStmts.rend();
@@ -1383,14 +1385,17 @@ void CFGBuilder::addLoopEntrance(const Stmt *FromStmt, const Stmt *ToStmt) {
 void CFGBuilder::addLoopExit(const Stmt *FromStmt, const Stmt *ToStmt) {
   if (!BuildOpts.AddLoopExit)
     return;
-
   llvm::SmallSetVector<const Stmt *, 4> FromLoopStmts =
       collectContainingLoops(FromStmt, *Context);
 
   llvm::SmallSetVector<const Stmt *, 4> ToLoopStmts =
       collectContainingLoops(ToStmt, *Context);
 
+
   FromLoopStmts.set_subtract(ToLoopStmts);
+  if(FromLoopStmts.empty())
+    return;
+  autoCreateBlock();
   for (llvm::SmallSetVector<const Stmt *, 4>::reverse_iterator
            I = FromLoopStmts.rbegin(),
            E = FromLoopStmts.rend();
@@ -3642,10 +3647,23 @@ CFGBlock *CFGBuilder::VisitCaseStmt(CaseStmt *CS) {
       else
         TopBlock = currentBlock;
 
+      //SaveAndRestore<CFGBlock*> SaveBlock(Block,nullptr);
+      /*addLoopEntrance(SwitchTerminatedBlock->getTerminator(), CS);
+      if(Block) {
+        addSuccessor(SwitchTerminatedBlock,
+                     shouldAddCase(switchExclusivelyCovered, switchCond,
+                                   CS, *Context)
+                     ? Block : nullptr);
+        addSuccessor(Block,
+                     shouldAddCase(switchExclusivelyCovered, switchCond,
+                                   CS, *Context)
+                     ? currentBlock : nullptr);
+      } else {*/
       addSuccessor(SwitchTerminatedBlock,
                    shouldAddCase(switchExclusivelyCovered, switchCond,
                                  CS, *Context)
                    ? currentBlock : nullptr);
+      //}
 
       LastBlock = currentBlock;
       CS = cast<CaseStmt>(Sub);
@@ -3669,15 +3687,24 @@ CFGBlock *CFGBuilder::VisitCaseStmt(CaseStmt *CS) {
   // Add this block to the list of successors for the block with the switch
   // statement.
   assert(SwitchTerminatedBlock);
-  addSuccessor(SwitchTerminatedBlock, CaseBlock,
-               shouldAddCase(switchExclusivelyCovered, switchCond,
-                             CS, *Context));
+
+
+   Block = CaseBlock;
+   addLoopEntrance(SwitchTerminatedBlock->getTerminator(), CS);
+
+//  addSuccessor(SwitchTerminatedBlock, Block ? Block : CaseBlock,
+//               shouldAddCase(switchExclusivelyCovered, switchCond,
+//                             CS, *Context));
+// if(Block)
+    addSuccessor(SwitchTerminatedBlock, CaseBlock,
+                 shouldAddCase(switchExclusivelyCovered, switchCond,
+                               CS, *Context));
+
 
   //llvm::errs() << "SWITCH terminator print===============\n";
   //SwitchTerminatedBlock->getTerminator()->dump();
   //llvm::errs() << "Case STMT print===============\n";
   //CS->dump();
-  addLoopEntrance(SwitchTerminatedBlock->getTerminator(), CS);
   // We set Block to NULL to allow lazy creation of a new block (if necessary)
   Block = nullptr;
 

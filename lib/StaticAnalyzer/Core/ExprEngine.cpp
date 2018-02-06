@@ -575,6 +575,19 @@ void ExprEngine::ProcessStmt(const CFGStmt S,
   Engine.enqueue(Dst, currBldrCtx->getBlock(), currStmtIdx);
 }
 
+static const Expr *getLoopCondition(const Stmt *LoopStmt) {
+  switch (LoopStmt->getStmtClass()) {
+    default:
+      return nullptr;
+    case Stmt::ForStmtClass:
+      return cast<ForStmt>(LoopStmt)->getCond();
+    case Stmt::WhileStmtClass:
+      return cast<WhileStmt>(LoopStmt)->getCond();
+    case Stmt::DoStmtClass:
+      return cast<DoStmt>(LoopStmt)->getCond();
+  }
+}
+
 void ExprEngine::ProcessLoopEntrance(const Stmt *LoopStmt, ExplodedNode *Pred) {
   PrettyStackTraceLoc CrashInfo(getContext().getSourceManager(),
                                 LoopStmt->getLocStart(),
@@ -593,14 +606,25 @@ void ExprEngine::ProcessLoopEntrance(const Stmt *LoopStmt, ExplodedNode *Pred) {
           updateLoopStates(cast<LoopContext>(NewLC), AMgr.getASTContext(), Pred,
                            AMgr.getAnalyzerOptions().maxBlockVisitOnPath);
     }
-    if (AMgr.options.shouldWidenLoops() && isWidenedLoopContext(cast<LoopContext>(NewLC),Pred->getState())){
+    if (AMgr.options.shouldWidenLoops()) {
+      if(const Expr *Cond = getLoopCondition(LoopStmt)) {
+        //llvm::errs() << "Cond =====\n";
+        //Cond->dump();
+        bool Result = false;
+        if (Cond->EvaluateAsBooleanCondition(Result, AMgr.getASTContext()))
+          NewState = markLoopAsNoWiden(LoopStmt, NewState);
+        //llvm::errs() << "Result: " << Result << "=================\n";
+      }
+    }
+    if (AMgr.options.shouldWidenLoops() && isWidenedLoopContext(cast<LoopContext>(NewLC), Pred->getState())){
       // Find the most outer unwidened loop.
       const LoopContext *OuterLoopCtx = Pred->getLocationContext()->getCurrentLoop();
-      while (OuterLoopCtx && isWidenedLoopContext(OuterLoopCtx, Pred->getState())) {
+      while (OuterLoopCtx && !shouldWidenLoop(OuterLoopCtx, Pred->getState())) {
         OuterLoopCtx = OuterLoopCtx->getParent()->getCurrentLoop();
       }
       if(OuterLoopCtx){
         assert(!isWidenedLoopContext(OuterLoopCtx, Pred->getState()));
+
         //llvm::errs() << "\nCALLING REPLAY:\nCURRENT LOOP:\n";
         //LoopStmt->dump();
         //llvm::errs() << "OUTER LOOP:\n";
@@ -635,14 +659,20 @@ void ExprEngine::ProcessLoopExit(const Stmt *LoopStmt, ExplodedNode *Pred) {
   NodeBuilder Bldr(Pred, Dst, *currBldrCtx);
   ProgramStateRef NewState = Pred->getState();
   const LocationContext *NewLCtx = Pred->getLocationContext();
-
   if (NewLCtx->getKind() == LocationContext::Loop &&
       cast<LoopContext>(NewLCtx)->getLoopStmt() == LoopStmt) {
     if (AMgr.options.shouldUnrollLoops()) {
       NewState = processLoopEnd(cast<LoopContext>(NewLCtx), NewState);
     }
+    //llvm::errs() << "DUMP1=====================\n";
+    //NewLCtx->dumpStack();
     NewLCtx = NewLCtx->getParent();
-  }
+    //llvm::errs() << "DUMP2=========\n";
+    //NewLCtx->dumpStack();
+
+  } /*else {
+    llvm::errs() << "FUCKHELL\n";
+  }*/
   LoopExit LE(LoopStmt, NewLCtx);
   Bldr.generateNode(LE, NewState, Pred);
   // Enqueue the new nodes onto the work list.
@@ -1683,6 +1713,7 @@ bool ExprEngine::replayWithWidening(ExplodedNode *N, const LoopContext *LoopCtx,
   const Stmt* LoopStmt = LoopCtx->getLoopStmt();
 
   std::queue<ExplodedNode*> Q;
+  ExplodedNode* SafetyN = nullptr;
   Q.push(N);
   while (!Q.empty()) {
     N = Q.front();
@@ -1695,21 +1726,26 @@ bool ExprEngine::replayWithWidening(ExplodedNode *N, const LoopContext *LoopCtx,
     ProgramPoint L = N->getLocation();
     if (!L.getAs<BlockEntrance>())
       continue;
-    if (Optional<BlockEntrance> BE = L.getAs<BlockEntrance>())
-      if(BE->getBlock()->getTerminator() != LoopStmt ||
-              N->getLocationContext()->getCurrentLoop() != LoopCtx){
+    if (Optional<BlockEntrance> BE = L.getAs<BlockEntrance>()) {
+      if (BE->getBlock()->getTerminator() != getLoopCondition(LoopStmt) &&
+              N->getLocationContext()->getCurrentLoop() == LoopCtx)
+        SafetyN = N;
+      if (BE->getBlock()->getTerminator() != LoopStmt ||
+          N->getLocationContext()->getCurrentLoop() != LoopCtx) {
         //llvm::errs() << "BLOCKENTRANCE FOUND TO: =======\n";
         //BE->getBlock()->getTerminator()->dump();
         //llvm::errs() << "BUT WE ARE LOOKING FOR: =======\n";
         //LoopStmt->dump();
         continue;
       }
+    }
     break;
   }
   if(Q.empty()) {
+    N = SafetyN;
    // ViewGraph();
   }
-  assert(!Q.empty() && "Reaching the root without finding the previous step of the loop");
+  assert((!Q.empty() || SafetyN) && "Reaching the root without finding the previous step of the loop");
 
   // TODO: Clean up the unneeded nodes.
   // Build an Epsilon node from which we will restart the analyzes.
@@ -1755,7 +1791,8 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
       const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
 
       if (!(Term &&
-            (isa<ForStmt>(Term) || isa<WhileStmt>(Term) || isa<DoStmt>(Term))))
+            (isa<ForStmt>(Term) || isa<WhileStmt>(Term) || isa<DoStmt>(Term)) &&
+            isPreciselyModelableLoop(Term,AMgr.getASTContext())))
         break;
       ProgramStateRef NewState = updateLoopStates(
           CurrLoop, AMgr.getASTContext(), Pred, maxBlockVisitOnPath);
@@ -1778,12 +1815,22 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
       AMgr.options.shouldWidenLoops()) {
     const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminator();
     if (!(Term &&
-          (isa<ForStmt>(Term) || isa<WhileStmt>(Term) || isa<DoStmt>(Term))))
+          (isa<ForStmt>(Term) || isa<WhileStmt>(Term) || isa<DoStmt>(Term)) &&
+         isPreciselyModelableLoop(Term,AMgr.getASTContext())))
       return;
     // Widen.
     const LocationContext *LCtx = Pred->getLocationContext();
-    if(isWidenedLoopContext(LCtx->getCurrentLoop(), Pred->getState()))
+    if(!shouldWidenLoop(LCtx->getCurrentLoop(), Pred->getState()))
       return;
+
+    //if(Term != LCtx->getCurrentLoop()->getLoopStmt()) {
+      //llvm::errs() << "Term DUMP========\n";
+      //Term->dump();
+      //llvm::errs() << "CurrentLoop DUMP========\n";
+      //LCtx->dumpStack();
+      //ViewGraph();
+    //}
+
     ProgramStateRef WidenedState = getWidenedLoopState(Pred->getState(),
                                                        AMgr.getASTContext(),
                                                        LCtx, BlockCount, Term);

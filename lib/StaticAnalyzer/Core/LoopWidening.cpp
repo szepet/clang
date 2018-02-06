@@ -28,7 +28,7 @@ using namespace clang::ast_matchers;
 
 
 REGISTER_SET_WITH_PROGRAMSTATE(WidenedLoopSet, const LoopContext *)
-
+REGISTER_SET_WITH_PROGRAMSTATE(NoWidenLoopSet, const Stmt *)
 /// Return the loops condition Stmt or NULL if LoopStmt is not a loop
 static const Expr *getLoopCondition(const Stmt *LoopStmt) {
   switch (LoopStmt->getStmtClass()) {
@@ -79,6 +79,10 @@ static internal::Matcher<Stmt> changeVariable() {
 
 namespace clang {
 namespace ento {
+
+ProgramStateRef markLoopAsNoWiden(const Stmt* LoopStmt, ProgramStateRef State) {
+  return State->add<NoWidenLoopSet>(LoopStmt);
+}
 
 bool collectRegion(const Expr *E,
                    llvm::SmallSet<const MemRegion *, 16> &RegionsToInvalidate,
@@ -143,6 +147,10 @@ ProgramStateRef getWidenedLoopState(ProgramStateRef State, ASTContext &ASTCtx,
 bool isWidenedLoopContext(const LoopContext* LC, ProgramStateRef State) {
   assert(State);
   return State->contains<WidenedLoopSet>(LC);
+}
+
+bool shouldWidenLoop(const LoopContext* LC, ProgramStateRef State){
+  return !isWidenedLoopContext(LC, State) && !State->contains<NoWidenLoopSet>(LC->getLoopStmt());
 }
 
 } // end namespace ento

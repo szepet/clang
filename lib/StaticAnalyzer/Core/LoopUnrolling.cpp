@@ -145,7 +145,7 @@ extern const internal::VariadicDynCastAllOfMatcher<Stmt, IndirectGotoStmt>
     indirectGotoStmt;
 
 bool isPreciselyModelableLoop(const Stmt *LoopStmt, ASTContext &ASTCtx) {
-  return match(stmt(hasDescendant(indirectGotoStmt())), *LoopStmt, ASTCtx)
+  return match(stmt(hasDescendant(stmt(anyOf(indirectGotoStmt(), caseStmt(), switchStmt())))), *LoopStmt, ASTCtx)
       .empty();
 }
 
