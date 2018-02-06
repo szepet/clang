@@ -1712,16 +1712,11 @@ bool ExprEngine::replayWithWidening(ExplodedNode *N, const LoopContext *LoopCtx,
                                     unsigned BlockCount) {
   const Stmt* LoopStmt = LoopCtx->getLoopStmt();
 
-  std::queue<ExplodedNode*> Q;
   ExplodedNode* SafetyN = nullptr;
-  Q.push(N);
-  while (!Q.empty()) {
-    N = Q.front();
-    Q.pop();
-    for(ExplodedNode::pred_iterator B = N->pred_begin(), E = N->pred_end();
-        B!=E;B++)
-      Q.push(*B);
-
+  while (N) {
+    N = N->getFirstPred();
+    if(!N)
+      break;
 
     ProgramPoint L = N->getLocation();
     if (!L.getAs<BlockEntrance>())
@@ -1741,11 +1736,11 @@ bool ExprEngine::replayWithWidening(ExplodedNode *N, const LoopContext *LoopCtx,
     }
     break;
   }
-  if(Q.empty()) {
+  if(!N) {
     N = SafetyN;
    // ViewGraph();
   }
-  assert((!Q.empty() || SafetyN) && "Reaching the root without finding the previous step of the loop");
+  assert(N && "Reaching the root without finding the previous step of the loop");
 
   // TODO: Clean up the unneeded nodes.
   // Build an Epsilon node from which we will restart the analyzes.
