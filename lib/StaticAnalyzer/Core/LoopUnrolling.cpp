@@ -19,10 +19,20 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 
+#include "llvm/ADT/Statistic.h"
+
+#define DEBUG_TYPE "LoopUnrolling"
+
+STATISTIC(NumLoopsUnrolled,
+"The # of times a loop is decided to be unrolled");
+STATISTIC(NumDiffLoopsUnrolled,
+          "The # of different loops which was worthy to be unrolled");
+
+
 using namespace clang;
 using namespace ento;
 using namespace clang::ast_matchers;
-
+std::set<const Stmt*> UnrolledLoops;
 static const int MAXIMUM_STEP_UNROLLED = 128;
 
 struct LoopState {
@@ -256,8 +266,11 @@ ProgramStateRef updateLoopStates(const LoopContext *LoopCtx, ASTContext &ASTCtx,
          "LoopEnter Block encountered for an already entered loop");
 
   if (LM.contains(LoopCtx) && LM.lookup(LoopCtx)->isUnrolled() &&
-      madeNewBranch(Pred, LoopStmt))
+      madeNewBranch(Pred, LoopStmt)) {
+    NumLoopsUnrolled--;
+    UnrolledLoops.erase(LoopStmt);
     return State->set<LoopMap>(LoopCtx, LoopState::getNormal(MaxVisitOnPath));
+  }
 
   if (LM.contains(LoopCtx))
     return State;
@@ -273,8 +286,12 @@ ProgramStateRef updateLoopStates(const LoopContext *LoopCtx, ASTContext &ASTCtx,
   unsigned InnerMaxStep = MaxStep * OuterStep;
   if (InnerMaxStep > MAXIMUM_STEP_UNROLLED)
     return State->set<LoopMap>(LoopCtx, LoopState::getNormal(MaxVisitOnPath));
-  else
+  else {
+    NumLoopsUnrolled++;
+    UnrolledLoops.insert(LoopStmt);
+    NumDiffLoopsUnrolled = UnrolledLoops.size();
     return State->set<LoopMap>(LoopCtx, LoopState::getUnrolled(InnerMaxStep));
+  }
 }
 
 bool isUnrolledLoopContext(const LoopContext *LC, ProgramStateRef State) {

@@ -21,11 +21,21 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ExplodedGraph.h"
 #include "llvm/ADT/SmallSet.h"
+#include <set>
+#include "llvm/ADT/Statistic.h"
+
+#define DEBUG_TYPE "LoopWidening"
+
+STATISTIC(NumLoopsWidened,
+          "The # of times a loop is successfully widened");
+
+STATISTIC(NumDiffLoopsWidened,
+          "The # of loops which was choosed to widen");
 
 using namespace clang;
 using namespace ento;
 using namespace clang::ast_matchers;
-
+std::set<const Stmt*> WidenedLoops;
 
 REGISTER_SET_WITH_PROGRAMSTATE(WidenedLoopSet, const LoopContext *)
 REGISTER_SET_WITH_PROGRAMSTATE(NoWidenLoopSet, const Stmt *)
@@ -122,9 +132,12 @@ ProgramStateRef getWidenedLoopState(ProgramStateRef State, ASTContext &ASTCtx,
   const LoopContext* LoopCtx = LCtx->getCurrentLoop();
   assert(LoopCtx && LoopCtx->getLoopStmt() == LoopStmt);
   assert(!isWidenedLoopContext(LoopCtx,State));
+  if(!shouldWidenLoop(LoopCtx,State))
+    return State;
 
   State = State->add<WidenedLoopSet>(LoopCtx);
-
+  WidenedLoops.insert(LoopCtx->getLoopStmt());
+  NumDiffLoopsWidened = (int) WidenedLoops.size();
   llvm::SmallSet<const MemRegion *, 16> RegionsToInvalidate;
   auto Matches = match(findAll(changeVariable()), *LoopStmt, ASTCtx);
   for (auto &Match : Matches) {
@@ -139,6 +152,7 @@ ProgramStateRef getWidenedLoopState(ProgramStateRef State, ASTContext &ASTCtx,
   for (auto E : RegionsToInvalidate)
     Regions.push_back(E);
 
+  NumLoopsWidened++;
   return State->invalidateRegions(llvm::makeArrayRef(Regions),
                                   getLoopCondition(LoopStmt), BlockCount, LCtx,
                                   true);
