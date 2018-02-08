@@ -33,6 +33,7 @@ using namespace clang;
 using namespace ento;
 using namespace clang::ast_matchers;
 std::set<const Stmt*> UnrolledLoops;
+std::set<const Stmt*> IgnoreSet;
 static const int MAXIMUM_STEP_UNROLLED = 128;
 
 struct LoopState {
@@ -267,8 +268,12 @@ ProgramStateRef updateLoopStates(const LoopContext *LoopCtx, ASTContext &ASTCtx,
 
   if (LM.contains(LoopCtx) && LM.lookup(LoopCtx)->isUnrolled() &&
       madeNewBranch(Pred, LoopStmt)) {
-    NumLoopsUnrolled--;
+    if(!IgnoreSet.count(LoopStmt)) {
+      NumLoopsUnrolled--;
+      IgnoreSet.insert(LoopStmt);
+    }
     UnrolledLoops.erase(LoopStmt);
+    NumDiffLoopsUnrolled = UnrolledLoops.size();
     return State->set<LoopMap>(LoopCtx, LoopState::getNormal(MaxVisitOnPath));
   }
 
@@ -287,7 +292,9 @@ ProgramStateRef updateLoopStates(const LoopContext *LoopCtx, ASTContext &ASTCtx,
   if (InnerMaxStep > MAXIMUM_STEP_UNROLLED)
     return State->set<LoopMap>(LoopCtx, LoopState::getNormal(MaxVisitOnPath));
   else {
-    NumLoopsUnrolled++;
+    if(!IgnoreSet.count(LoopStmt)) {
+      NumLoopsUnrolled++;
+    }
     UnrolledLoops.insert(LoopStmt);
     NumDiffLoopsUnrolled = UnrolledLoops.size();
     return State->set<LoopMap>(LoopCtx, LoopState::getUnrolled(InnerMaxStep));
