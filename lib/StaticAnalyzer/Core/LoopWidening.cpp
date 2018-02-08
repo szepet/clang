@@ -136,8 +136,8 @@ ProgramStateRef getWidenedLoopState(ProgramStateRef State, ASTContext &ASTCtx,
     return State;
 
   State = State->add<WidenedLoopSet>(LoopCtx);
-  WidenedLoops.insert(LoopCtx->getLoopStmt());
-  NumDiffLoopsWidened = (int) WidenedLoops.size();
+
+
   llvm::SmallSet<const MemRegion *, 16> RegionsToInvalidate;
   auto Matches = match(findAll(changeVariable()), *LoopStmt, ASTCtx);
   for (auto &Match : Matches) {
@@ -151,7 +151,8 @@ ProgramStateRef getWidenedLoopState(ProgramStateRef State, ASTContext &ASTCtx,
   Regions.reserve(RegionsToInvalidate.size());
   for (auto E : RegionsToInvalidate)
     Regions.push_back(E);
-
+  WidenedLoops.insert(LoopCtx->getLoopStmt());
+  NumDiffLoopsWidened = (int) WidenedLoops.size();
   NumLoopsWidened++;
   return State->invalidateRegions(llvm::makeArrayRef(Regions),
                                   getLoopCondition(LoopStmt), BlockCount, LCtx,
