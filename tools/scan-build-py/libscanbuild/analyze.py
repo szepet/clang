@@ -639,7 +639,6 @@ def dispatch_ctu(opts, continuation=run_analyzer):
                 + opts['flags'] + [opts['file']]
             triarch = get_triple_arch(cmd, cwd)
             ctu_options = ['ctu-dir=' + os.path.join(ctu_config.dir, triarch),
-                           'reanalyze-ctu-visited=true',
                            'experimental-enable-naive-ctu-analysis=true']
             analyzer_options = prefix_with('-analyzer-config', ctu_options)
             direct_options = prefix_with('-Xanalyzer', analyzer_options)
