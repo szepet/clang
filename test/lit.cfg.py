@@ -58,8 +58,7 @@ tool_dirs = [config.clang_tools_dir, config.llvm_tools_dir]
 
 tools = [
     'c-index-test', 'clang-check', 'clang-diff', 'clang-format', 'opt',
-    ToolSubst('%clang_func_map', command=FindTool(
-        'clang-func-mapping'), unresolved='ignore'),
+    'clang-display-context', 'clang-func-mapping',
 ]
 
 if config.clang_examples:
