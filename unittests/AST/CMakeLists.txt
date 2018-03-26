@@ -18,6 +18,7 @@ add_clang_unittest(ASTTests
   PostOrderASTVisitor.cpp
   SourceLocationTest.cpp
   StmtPrinterTest.cpp
+  StructuralEquivalenceTest.cpp
   )
 
 target_link_libraries(ASTTests
