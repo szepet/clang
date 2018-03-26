@@ -11,9 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "MatchVerifier.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTImporter.h"
-#include "MatchVerifier.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/Tooling/Tooling.h"
@@ -96,7 +96,10 @@ testImport(const std::string &FromCode, const ArgVector &FromArgs,
   FromCtx.getTranslationUnitDecl()->localUncachedLookup(
         ImportDeclName, FoundDecls);
 
-  if (FoundDecls.size() != 1)
+  if (FoundDecls.size() == 0)
+    return testing::AssertionFailure() << "No declarations were found!";
+
+  if (FoundDecls.size() > 1)
     return testing::AssertionFailure() << "Multiple declarations were found!";
 
   auto Imported = Importer.Import(*FoundDecls.begin());
@@ -480,6 +483,15 @@ TEST(ImportExpr, ImportVAArgExpr) {
                          vaArgExpr())))))));
 }
 
+TEST(ImportExpr, CXXTemporaryObjectExpr) {
+  MatchVerifier<Decl> Verifier;
+  testImport(
+      "struct C {};"
+      "void declToImport() { C c = C(); }",
+      Lang_CXX, "", Lang_CXX, Verifier,
+      functionDecl(hasBody(compoundStmt(
+          hasDescendant(cxxTemporaryObjectExpr())))));
+}
 
 TEST(ImportType, ImportAtomicType) {
   MatchVerifier<Decl> Verifier;
@@ -497,8 +509,26 @@ TEST(ImportType, ImportAtomicType) {
 
 TEST(ImportDecl, ImportFunctionTemplateDecl) {
   MatchVerifier<Decl> Verifier;
-  testImport("template <typename T> void declToImport() { };", Lang_CXX, "",
-             Lang_CXX, Verifier, functionTemplateDecl());
+  testImport(
+          "template <typename T> void declToImport() { };",
+          Lang_CXX, "", Lang_CXX, Verifier,
+          functionTemplateDecl());
+  testImport(
+      "template<typename Y> int a() { return 1; }"
+      "template<typename Y, typename D> int a(){ return 2; }"
+      "void declToImport() { a<void>(); }",
+      Lang_CXX, "", Lang_CXX, Verifier,
+      functionDecl(has(compoundStmt(has(callExpr(has(ignoringParenImpCasts(
+          declRefExpr(to(functionDecl(hasBody(compoundStmt(
+              has(returnStmt(has(integerLiteral(equals(1))))))))))))))))));
+  testImport(
+      "template<typename Y> int a() { return 1; }"
+      "template<typename Y, typename D> int a() { return 2; }"
+      "void declToImport() { a<void,void>(); }",
+      Lang_CXX, "", Lang_CXX, Verifier,
+      functionDecl(has(compoundStmt(has(callExpr(has(ignoringParenImpCasts(
+          declRefExpr(to(functionDecl(hasBody(compoundStmt(
+              has(returnStmt(has(integerLiteral(equals(2))))))))))))))))));
 }
 
 const internal::VariadicDynCastAllOfMatcher<Expr, CXXDependentScopeMemberExpr>
@@ -544,6 +574,22 @@ TEST(ImportType, ImportTypeAliasTemplate) {
                              declRefExpr())))))))));
 }
 
+const internal::VariadicDynCastAllOfMatcher<Decl, VarTemplateSpecializationDecl>
+    varTemplateSpecializationDecl;
+
+TEST(ImportDecl, ImportVarTemplate) {
+  MatchVerifier<Decl> Verifier;
+  testImport(
+      "template <typename T>"
+      "T pi = T(3.1415926535897932385L);"
+      "void declToImport() { pi<int>; }",
+      Lang_CXX11, "", Lang_CXX11, Verifier,
+      functionDecl(
+          hasBody(has(declRefExpr(to(varTemplateSpecializationDecl())))),
+          unless(hasAncestor(translationUnitDecl(has(varDecl(
+              hasName("pi"), unless(varTemplateSpecializationDecl()))))))));
+}
+
 TEST(ImportType, ImportPackExpansion) {
   MatchVerifier<Decl> Verifier;
   testImport("template <typename... Args>"
@@ -562,6 +608,51 @@ TEST(ImportType, ImportPackExpansion) {
                          implicitCastExpr(
                            has(
                              declRefExpr())))))))));
+}
+
+const internal::VariadicDynCastAllOfMatcher<Type,
+                                            DependentTemplateSpecializationType>
+    dependentTemplateSpecializationType;
+
+TEST(ImportType, ImportDependentTemplateSpecialization) {
+  MatchVerifier<Decl> Verifier;
+  testImport(
+      "template<typename T>"
+      "struct A;"
+      "template<typename T>"
+      "struct declToImport {"
+      "  typename A<T>::template B<T> a;"
+      "};",
+      Lang_CXX, "", Lang_CXX, Verifier,
+      classTemplateDecl(has(cxxRecordDecl(
+          has(fieldDecl(hasType(dependentTemplateSpecializationType())))))));
+}
+
+const internal::VariadicDynCastAllOfMatcher<Stmt, SizeOfPackExpr>
+    sizeOfPackExpr;
+
+TEST(ImportExpr, ImportSizeOfPackExpr) {
+  MatchVerifier<Decl> Verifier;
+  testImport("template <typename... Ts>"
+             "void declToImport() {"
+             "  const int i = sizeof...(Ts);"
+             "};"
+             "void instantiate() { declToImport<void>(); }",
+             Lang_CXX11, "", Lang_CXX11, Verifier,
+             functionTemplateDecl(has(functionDecl(hasBody(
+                 compoundStmt(has(declStmt(has(varDecl(hasInitializer(
+                     implicitCastExpr(has(sizeOfPackExpr())))))))))))));
+  testImport(
+      "template <typename... Ts>"
+      "using X = int[sizeof...(Ts)];"
+      "template <typename... Us>"
+      "struct Y {"
+      "  X<Us..., int, double, int, Us...> f;"
+      "};"
+      "Y<float, int> declToImport;",
+      Lang_CXX11, "", Lang_CXX11, Verifier,
+      varDecl(hasType(classTemplateSpecializationDecl(has(fieldDecl(hasType(
+          hasUnqualifiedDesugaredType(constantArrayType(hasSize(7))))))))));
 }
 
 /// \brief Matches __builtin_types_compatible_p:
@@ -584,6 +675,24 @@ TEST(ImportExpr, ImportTypeTraitExpr) {
                  compoundStmt(
                    has(
                      typeTraitExpr(hasType(asString("int"))))))));
+}
+
+const internal::VariadicDynCastAllOfMatcher<Stmt, CXXTypeidExpr> cxxTypeidExpr;
+
+TEST(ImportExpr, ImportCXXTypeidExpr) {
+  MatchVerifier<Decl> Verifier;
+  testImport(
+      "namespace std { class type_info {}; }"
+      "void declToImport() {"
+      "  int x;"
+      "  auto a = typeid(int); auto b = typeid(x);"
+      "}",
+      Lang_CXX11, "", Lang_CXX11, Verifier,
+      functionDecl(
+          hasDescendant(varDecl(
+              hasName("a"), hasInitializer(hasDescendant(cxxTypeidExpr())))),
+          hasDescendant(varDecl(
+              hasName("b"), hasInitializer(hasDescendant(cxxTypeidExpr()))))));
 }
 
 TEST(ImportExpr, ImportTypeTraitExprValDep) {
@@ -635,6 +744,14 @@ TEST(ImportDecl, ImportUsingDecl) {
                          usingDecl())))))));
 }
 
+TEST(ImportDecl, ImportRecordDeclInFuncParams) {
+  MatchVerifier<Decl> Verifier;
+  testImport(
+      "int declToImport(struct data_t{int a;int b;} *d){ return 0; }",
+      Lang_CXX, "", Lang_CXX, Verifier,
+      functionDecl());
+}
+
 /// \brief Matches shadow declarations introduced into a scope by a
 ///        (resolved) using declaration.
 ///
@@ -654,6 +771,186 @@ TEST(ImportDecl, ImportUsingShadowDecl) {
              "namespace declToImport { using foo::bar; }",
              Lang_CXX, "", Lang_CXX, Verifier,
              namespaceDecl(has(usingShadowDecl())));
+}
+
+const internal::VariadicDynCastAllOfMatcher<Expr, UnresolvedMemberExpr>
+    unresolvedMemberExpr;
+TEST(ImportExpr, ImportUnresolvedMemberExpr) {
+  MatchVerifier<Decl> Verifier;
+  testImport("struct S { template <typename T> void mem(); };"
+             "template <typename U> void declToImport() {"
+             "S s;"
+             "s.mem<U>();"
+             "}"
+             "void instantiate() { declToImport<void>(); }",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             functionTemplateDecl(has(functionDecl(has(compoundStmt(
+                 has(callExpr(has(unresolvedMemberExpr())))))))));
+}
+
+const internal::VariadicDynCastAllOfMatcher<Expr, DependentScopeDeclRefExpr>
+    dependentScopeDeclRefExpr;
+TEST(ImportExpr, ImportDependentScopeDeclRefExpr) {
+  MatchVerifier<Decl> Verifier;
+  testImport("template <typename T> struct S { static const int foo = 0; };"
+             "template <typename T> void declToImport() {"
+             "S<T>::foo;"
+             "}"
+             "void instantiate() { declToImport<void>(); }",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             functionTemplateDecl(has(functionDecl(has(compoundStmt(
+                 has(dependentScopeDeclRefExpr())))))));
+
+  testImport("template <typename T> struct S {"
+             "  template <typename S> class foo {};"
+             "};"
+             "template <typename T> void declToImport() {"
+             "S<T>::template foo;"
+             "}"
+             "void instantiate() { declToImport<void>(); }",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             functionTemplateDecl(has(functionDecl(has(compoundStmt(
+                 has(dependentScopeDeclRefExpr())))))));
+
+  testImport("template <typename T> struct S {"
+             "  template <typename S = void> class foo {};"
+             "};"
+             "template <typename T> void declToImport() {"
+             "S<T>::template foo<>;"
+             "}"
+             "void instantiate() { declToImport<void>(); }",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             functionTemplateDecl(has(functionDecl(has(compoundStmt(
+                 has(dependentScopeDeclRefExpr())))))));
+
+  testImport("template <typename T> struct S {"
+             "  template <typename S> class foo {};"
+             "};"
+             "template <typename T> void declToImport() {"
+             "S<T>::template foo<T>;"
+             "}"
+             "void instantiate() { declToImport<void>(); }",
+              Lang_CXX, "", Lang_CXX, Verifier,
+              functionTemplateDecl(has(functionDecl(has(compoundStmt(
+                  has(dependentScopeDeclRefExpr())))))));
+}
+
+const internal::VariadicDynCastAllOfMatcher<Type, DependentNameType>
+    dependentNameType;
+TEST(ImportExpr, DependentNameType) {
+  MatchVerifier<Decl> Verifier;
+  testImport("template <typename T> struct declToImport {"
+             "typedef typename T::type dependent_name;"
+             "},",
+             Lang_CXX11, "", Lang_CXX11, Verifier,
+             classTemplateDecl(has(cxxRecordDecl(
+                 has(typedefDecl(has(dependentNameType())))))));
+}
+
+TEST(ImportExpr, DependentSizedArrayType) {
+  MatchVerifier<Decl> Verifier;
+  testImport("template<typename T, int Size> class declToImport {"
+             "  T data[Size];"
+             "};",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             classTemplateDecl(has(cxxRecordDecl(has(fieldDecl(
+                 hasType(dependentSizedArrayType())))))));
+}
+
+TEST(ImportExpr, CXXOperatorCallExpr) {
+  MatchVerifier<Decl> Verifier;
+  testImport("class declToImport {"
+             "  void f() { *this = declToImport(); }"
+             "};",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             cxxRecordDecl(has(cxxMethodDecl(hasBody(compoundStmt(
+                 has(exprWithCleanups(
+                     has(cxxOperatorCallExpr())))))))));
+}
+
+TEST(ImportExpr, CXXNamedCastExpr) {
+  MatchVerifier<Decl> Verifier;
+  testImport("void declToImport() {"
+             "  const_cast<char*>(\"hello\");"
+             "}",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             functionDecl(hasBody(compoundStmt(has(
+                 cxxConstCastExpr())))));
+  testImport("void declToImport() {"
+             "  double d;"
+             "  reinterpret_cast<int*>(&d);"
+             "}",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             functionDecl(hasBody(compoundStmt(has(
+                 cxxReinterpretCastExpr())))));
+  testImport("struct A {virtual ~A() {} };"
+             "struct B : A {};"
+             "void declToImport() {"
+             "  dynamic_cast<B*>(new A);"
+             "}",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             functionDecl(hasBody(compoundStmt(has(
+                 cxxDynamicCastExpr())))));
+  testImport("struct A {virtual ~A() {} };"
+             "struct B : A {};"
+              "void declToImport() {"
+              "  static_cast<B*>(new A);"
+              "}",
+              Lang_CXX, "", Lang_CXX, Verifier,
+              functionDecl(hasBody(compoundStmt(has(
+                  cxxStaticCastExpr())))));
+}
+
+TEST(ImportExpr, ImportUnresolvedLookupExpr) {
+  MatchVerifier<Decl> Verifier;
+  testImport("template<typename T> int foo();"
+             "template <typename T> void declToImport() {"
+             "  ::foo<T>;"
+             "  ::template foo<T>;"
+             "}"
+             "void instantiate() { declToImport<int>(); }",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             functionTemplateDecl(has(functionDecl(
+                 has(compoundStmt(has(unresolvedLookupExpr())))))));
+}
+
+TEST(ImportExpr, ImportCXXUnresolvedConstructExpr) {
+  MatchVerifier<Decl> Verifier;
+  testImport("template <typename T> struct C { T t; };"
+             "template <typename T> void declToImport() {"
+             "  C<T> d;"
+             "  d.t = T();"
+             "}"
+             "void instantiate() { declToImport<int>(); }",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             functionTemplateDecl(has(functionDecl(has(compoundStmt(has(
+                 binaryOperator(has(cxxUnresolvedConstructExpr())))))))));
+  testImport("template <typename T> struct C { T t; };"
+             "template <typename T> void declToImport() {"
+             "  C<T> d;"
+             "  (&d)->t = T();"
+             "}"
+             "void instantiate() { declToImport<int>(); }",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             functionTemplateDecl(has(functionDecl(has(compoundStmt(has(
+                 binaryOperator(has(cxxUnresolvedConstructExpr())))))))));
+}
+
+/// Check that function "declToImport()" (which is the templated function
+/// for corresponding FunctionTemplateDecl) is not added into DeclContext.
+/// Same for class template declarations.
+TEST(ImportDecl, DISABLED_ImportTemplatedDeclForTemplate) {
+  MatchVerifier<Decl> Verifier;
+  testImport("template <typename T> void declToImport() { T a = 1; }"
+             "void instantiate() { declToImport<int>(); }",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             functionTemplateDecl(hasAncestor(translationUnitDecl(
+                 unless(has(functionDecl(hasName("declToImport"))))))));
+  testImport("template <typename T> struct declToImport { T t; };"
+             "void instantiate() { declToImport<int>(); }",
+             Lang_CXX, "", Lang_CXX, Verifier,
+             classTemplateDecl(hasAncestor(translationUnitDecl(
+                 unless(has(cxxRecordDecl(hasName("declToImport"))))))));
 }
 
 } // end namespace ast_matchers

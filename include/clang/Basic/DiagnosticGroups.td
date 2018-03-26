@@ -988,3 +988,6 @@ def SpirCompat : DiagGroup<"spir-compat">;
 
 // Warning for the experimental-isel options.
 def ExperimentalISel : DiagGroup<"experimental-isel">;
+
+// Diag group for importing
+def OdrDiags : DiagGroup<"odr">;
