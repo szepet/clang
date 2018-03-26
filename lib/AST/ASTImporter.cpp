@@ -1154,6 +1154,8 @@ bool ASTNodeImporter::ImportDefinition(RecordDecl *From, RecordDecl *To,
   
   To->startDefinition();
   
+  setTypedefNameForAnonDecl(From, To, Importer);
+
   // Add base classes.
   if (CXXRecordDecl *ToCXX = dyn_cast<CXXRecordDecl>(To)) {
     CXXRecordDecl *FromCXX = cast<CXXRecordDecl>(From);
@@ -1281,6 +1283,8 @@ bool ASTNodeImporter::ImportDefinition(EnumDecl *From, EnumDecl *To,
   }
   
   To->startDefinition();
+
+  setTypedefNameForAnonDecl(From, To, Importer);
 
   QualType T = Importer.Import(Importer.getFromContext().getTypeDeclType(From));
   if (T.isNull())
@@ -1599,6 +1603,9 @@ Decl *ASTNodeImporter::VisitStaticAssertDecl(StaticAssertDecl *D) {
   DeclContext *DC = Importer.ImportContext(D->getDeclContext());
   if (!DC)
     return nullptr;
+  Decl *AlreadyImported = Importer.GetAlreadyImportedOrNull(D);
+  if (AlreadyImported)
+    return AlreadyImported;
 
   DeclContext *LexicalDC = DC;
 
@@ -1791,15 +1798,18 @@ Decl *ASTNodeImporter::VisitTypedefNameDecl(TypedefNameDecl *D, bool IsAlias) {
   if (T.isNull())
     return nullptr;
 
+  // Some nodes (like anonymous tags referred by typedefs) are allowed to
+  // import their enclosing typedef directly. Check if this is the case.
+  if (Decl *AlreadyImported = Importer.GetAlreadyImportedOrNull(D))
+    return AlreadyImported;
+
   // Create the new typedef node.
   TypeSourceInfo *TInfo = Importer.Import(D->getTypeSourceInfo());
   SourceLocation StartL = Importer.Import(D->getLocStart());
   TypedefNameDecl *ToTypedef;
   if (IsAlias)
-    ToTypedef = TypeAliasDecl::Create(Importer.getToContext(), DC,
-                                      StartL, Loc,
-                                      Name.getAsIdentifierInfo(),
-                                      TInfo);
+    ToTypedef = TypeAliasDecl::Create(Importer.getToContext(), DC, StartL, Loc,
+                                      Name.getAsIdentifierInfo(), TInfo);
   else
     ToTypedef = TypedefDecl::Create(Importer.getToContext(), DC,
                                     StartL, Loc,
@@ -2480,7 +2490,12 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
   TypeSourceInfo *TInfo = Importer.Import(D->getTypeSourceInfo());
   if (D->getTypeSourceInfo() && !TInfo)
     return nullptr;
-
+  
+  // Check recursive import.
+  Decl *AlreadyImported = Importer.GetAlreadyImportedOrNull(D);
+  if (AlreadyImported)
+    return AlreadyImported;
+  
   // Create the imported function.
   FunctionDecl *ToFunction = nullptr;
   SourceLocation InnerLocStart = Importer.Import(D->getInnerLocStart());
@@ -2554,9 +2569,9 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
   Importer.Imported(D, ToFunction);
 
   // Set the parameters.
-  for (unsigned I = 0, N = Parameters.size(); I != N; ++I) {
-    Parameters[I]->setOwningFunction(ToFunction);
-    ToFunction->addDeclInternal(Parameters[I]);
+  for (ParmVarDecl *Param : Parameters) {
+    Param->setOwningFunction(ToFunction);
+    ToFunction->addDeclInternal(Param);
   }
   ToFunction->setParams(Parameters);
 
@@ -3004,6 +3019,9 @@ Decl *ASTNodeImporter::VisitVarDecl(VarDecl *D) {
 
   // Create the imported variable.
   TypeSourceInfo *TInfo = Importer.Import(D->getTypeSourceInfo());
+
+  if (Decl *AlreadyImported = Importer.GetAlreadyImportedOrNull(D))
+    return AlreadyImported;
   VarDecl *ToVar = VarDecl::Create(Importer.getToContext(), DC,
                                    Importer.Import(D->getInnerLocStart()),
                                    Loc, Name.getAsIdentifierInfo(),
@@ -3528,6 +3546,9 @@ Decl *ASTNodeImporter::VisitUsingShadowDecl(UsingShadowDecl *D) {
         Importer.Import(D->getTargetDecl()));
   if (!ToTarget)
     return nullptr;
+
+  if (Decl *AlreadyImported = Importer.GetAlreadyImportedOrNull(D))
+    return AlreadyImported;
 
   UsingShadowDecl *ToShadow = UsingShadowDecl::Create(
         Importer.getToContext(), DC, Loc, ToUsing, ToTarget);
@@ -4678,6 +4699,11 @@ Decl *ASTNodeImporter::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
       cast_or_null<FunctionDecl>(Importer.Import(D->getTemplatedDecl()));
   if (!TemplatedFD)
     return nullptr;
+
+  // Check recursive import.
+  Decl *AlreadyImported = Importer.GetAlreadyImportedOrNull(D);
+  if (AlreadyImported)
+    return AlreadyImported;
 
   FunctionTemplateDecl *ToFunc = FunctionTemplateDecl::Create(
       Importer.getToContext(), DC, Loc, Name, Params, TemplatedFD);
@@ -6836,28 +6862,6 @@ Decl *ASTImporter::Import(Decl *FromD) {
   // Record the imported declaration.
   ImportedDecls[FromD] = ToD;
   
-  if (TagDecl *FromTag = dyn_cast<TagDecl>(FromD)) {
-    // Keep track of anonymous tags that have an associated typedef.
-    if (FromTag->getTypedefNameForAnonDecl())
-      AnonTagsWithPendingTypedefs.push_back(FromTag);
-  } else if (TypedefNameDecl *FromTypedef = dyn_cast<TypedefNameDecl>(FromD)) {
-    // When we've finished transforming a typedef, see whether it was the
-    // typedef for an anonymous tag.
-    for (SmallVectorImpl<TagDecl *>::iterator
-               FromTag = AnonTagsWithPendingTypedefs.begin(), 
-            FromTagEnd = AnonTagsWithPendingTypedefs.end();
-         FromTag != FromTagEnd; ++FromTag) {
-      if ((*FromTag)->getTypedefNameForAnonDecl() == FromTypedef) {
-        if (TagDecl *ToTag = cast_or_null<TagDecl>(Import(*FromTag))) {
-          // We found the typedef for an anonymous tag; link them.
-          ToTag->setTypedefNameForAnonDecl(cast<TypedefNameDecl>(ToD));
-          AnonTagsWithPendingTypedefs.erase(FromTag);
-          break;
-        }
-      }
-    }
-  }
-  
   return ToD;
 }
 
@@ -7464,6 +7468,12 @@ void ASTImporter::CompleteDecl (Decl *D) {
 }
 
 Decl *ASTImporter::Imported(Decl *From, Decl *To) {
+  llvm::DenseMap<Decl *, Decl *>::iterator Pos = ImportedDecls.find(From);
+  assert((Pos == ImportedDecls.end() || Pos->second == To) &&
+      "Try to import an already imported Decl");
+  if (Pos != ImportedDecls.end())
+    return Pos->second;
+
   if (From->hasAttrs()) {
     for (Attr *FromAttr : From->getAttrs())
       To->addAttr(FromAttr->clone(To->getASTContext()));
