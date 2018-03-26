@@ -2448,7 +2448,6 @@ TEST_F(Fixture, DeclsFromFriendsShouldBeInRedeclChains2) {
 
 struct CanonicalRedeclChain : Fixture {};
 
-/*
 TEST_F(CanonicalRedeclChain, ShouldBeConsequentWithMatchers) {
   Decl *FromTU = getTuDecl("void f();", Lang_CXX);
   auto Pattern = functionDecl(hasName("f"));
@@ -2486,7 +2485,7 @@ TEST_F(CanonicalRedeclChain, ShouldBeSameForAllDeclInTheChain) {
 
   EXPECT_THAT(RedeclsD0, ::testing::ContainerEq(RedeclsD1));
   EXPECT_THAT(RedeclsD1, ::testing::ContainerEq(RedeclsD2));
-}*/
+}
 
 // Note, this test case is automatically reduced from Xerces code.
 TEST_F(Fixture, UsingShadowDeclShouldImportTheDeclOnlyOnce) {
