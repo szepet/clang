@@ -1999,14 +1999,14 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
   // but this particular declaration is not that definition, import the
   // definition and map to that.
   TagDecl *Definition = D->getDefinition();
-  if (Definition && Definition != D) {
+  if (!D->isImplicit() && Definition && Definition != D) {
     Decl *ImportedDef = Importer.Import(Definition);
     if (!ImportedDef)
       return nullptr;
 
     return Importer.Imported(D, ImportedDef);
   }
-  
+
   // Import the major distinguishing characteristics of this record.
   DeclContext *DC, *LexicalDC;
   DeclarationName Name;
@@ -2024,7 +2024,7 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
     SearchName = Importer.Import(D->getTypedefNameForAnonDecl()->getDeclName());
     IDNS |= Decl::IDNS_Ordinary;
   } else if (Importer.getToContext().getLangOpts().CPlusPlus)
-    IDNS |= Decl::IDNS_Ordinary;
+    IDNS |= Decl::IDNS_Ordinary | Decl::IDNS_TagFriend;
 
   // We may already have a record of the same name; try to find and match it.
   RecordDecl *AdoptDecl = nullptr;
@@ -2043,17 +2043,23 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
     for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
       if (!FoundDecls[I]->isInIdentifierNamespace(IDNS))
         continue;
-      
+
       Decl *Found = FoundDecls[I];
       if (TypedefNameDecl *Typedef = dyn_cast<TypedefNameDecl>(Found)) {
         if (const TagType *Tag = Typedef->getUnderlyingType()->getAs<TagType>())
           Found = Tag->getDecl();
       }
       
+      if (D->getDescribedTemplate()) {
+        if (ClassTemplateDecl *Template = dyn_cast<ClassTemplateDecl>(Found))
+          Found = Template->getTemplatedDecl();
+        else
+          continue;
+      }
+      
       if (RecordDecl *FoundRecord = dyn_cast<RecordDecl>(Found)) {
-        if (D->isAnonymousStructOrUnion() && 
-            FoundRecord->isAnonymousStructOrUnion()) {
-          // If both anonymous structs/unions are in a record context, make sure
+        if (!SearchName) {
+          // If both unnamed structs/unions are in a record context, make sure
           // they occur in the same location in the context records.
           if (Optional<unsigned> Index1 =
                   StructuralEquivalenceContext::findUntaggedStructOrUnionIndex(
@@ -2063,6 +2069,9 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
               if (*Index1 != *Index2)
                 continue;
             }
+          } else {
+            if(!IsStructuralMatch(D, FoundRecord, false))
+              continue;
           }
         }
 
@@ -2132,24 +2141,26 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
         if (DCXX->getLambdaContextDecl() && !CDecl)
           return nullptr;
         D2CXX->setLambdaMangling(DCXX->getLambdaManglingNumber(), CDecl);
-      } else if (DCXX->isInjectedClassName()) {                                                 
-        // We have to be careful to do a similar dance to the one in                            
-        // Sema::ActOnStartCXXMemberDeclarations                                                
-        CXXRecordDecl *const PrevDecl = nullptr;                                                
-        const bool DelayTypeCreation = true;                                                    
-        D2CXX = CXXRecordDecl::Create(                                                          
-            Importer.getToContext(), D->getTagKind(), DC, StartLoc, Loc,                        
-            Name.getAsIdentifierInfo(), PrevDecl, DelayTypeCreation);                           
-        Importer.getToContext().getTypeDeclType(                                                
-            D2CXX, llvm::dyn_cast<CXXRecordDecl>(DC));                                          
+      } else if (DCXX->isInjectedClassName()) {
+        // We have to be careful to do a similar dance to the one in
+        // Sema::ActOnStartCXXMemberDeclarations
+        CXXRecordDecl *const PrevDecl = nullptr;
+        const bool DelayTypeCreation = true;
+        D2CXX = CXXRecordDecl::Create(
+            Importer.getToContext(), D->getTagKind(), DC, StartLoc, Loc,
+            Name.getAsIdentifierInfo(), PrevDecl, DelayTypeCreation);
+        Importer.getToContext().getTypeDeclType(
+            D2CXX, llvm::dyn_cast<CXXRecordDecl>(DC));
       } else {
-        D2CXX = CXXRecordDecl::Create(Importer.getToContext(),
-                                      D->getTagKind(),
-                                      DC, StartLoc, Loc,
-                                      Name.getAsIdentifierInfo());
+        D2CXX = CXXRecordDecl::Create(
+            Importer.getToContext(), D->getTagKind(), DC, StartLoc, Loc,
+            Name.getAsIdentifierInfo(), cast_or_null<CXXRecordDecl>(PrevDecl));
       }
       D2 = D2CXX;
       D2->setAccess(D->getAccess());
+      D2->setLexicalDeclContext(LexicalDC);
+      if (!DCXX->getDescribedClassTemplate() || DCXX->isImplicit())
+        LexicalDC->addDeclInternal(D2);
 
       Importer.Imported(D, D2);
 
@@ -2160,7 +2171,29 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
         if (!ToDescribed)
           return nullptr;
         D2CXX->setDescribedClassTemplate(ToDescribed);
-
+        if (!DCXX->isInjectedClassName() && D->isCompleteDefinition()) {
+          // In a record describing a template the type should be a
+          // InjectedClassNameType (see Sema::CheckClassTemplate). Update the
+          // previously set type to the correct value here (ToDescribed is not
+          // available at record create).
+          // FIXME: The previous type is cleared but not removed from
+          // ASTContext's internal storage.
+          D2CXX->setTypeForDecl(nullptr);
+          Importer.getToContext().getInjectedClassNameType(D2CXX,
+              ToDescribed->getInjectedClassNameSpecialization());
+          // Find the injected class name itself and update the type too.
+          CXXRecordDecl *Injected = [&] {
+            for (NamedDecl *Found : D2CXX->noload_lookup(Name)) {
+              auto *Record = dyn_cast<CXXRecordDecl>(Found);
+              if (Record && Record->isInjectedClassName()) {
+                return Record;
+              }
+            }
+            assert(false && "No injected-class-name found!");
+          }();
+          Injected->setTypeForDecl(nullptr);
+          Importer.getToContext().getTypeDeclType(Injected, D2CXX);
+        }
       } else if (MemberSpecializationInfo *MemberInfo =
                    DCXX->getMemberSpecializationInfo()) {
         TemplateSpecializationKind SK =
@@ -2176,19 +2209,16 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
       }
 
     } else {
-      D2 = RecordDecl::Create(Importer.getToContext(), D->getTagKind(),
-                              DC, StartLoc, Loc, Name.getAsIdentifierInfo());
+      D2 = RecordDecl::Create(Importer.getToContext(), D->getTagKind(), DC,
+                              StartLoc, Loc, Name.getAsIdentifierInfo(),
+                              PrevDecl);
+      D2->setLexicalDeclContext(LexicalDC);
+      LexicalDC->addDeclInternal(D2);
     }
     
     D2->setQualifierInfo(Importer.Import(D->getQualifierLoc()));
-    D2->setLexicalDeclContext(LexicalDC);
-    LexicalDC->addDeclInternal(D2);
     if (D->isAnonymousStructOrUnion())
       D2->setAnonymousStructOrUnion(true);
-    if (PrevDecl) {
-      // FIXME: do this for all Redeclarables, not just RecordDecls.
-      D2->setPreviousDecl(PrevDecl);
-    }
   }
   
   Importer.Imported(D, D2);
@@ -4269,19 +4299,18 @@ Decl *ASTNodeImporter::VisitClassTemplateSpecializationDecl(
   void *InsertPos = nullptr;
   ClassTemplateSpecializationDecl *D2
     = ClassTemplate->findSpecialization(TemplateArgs, InsertPos);
-  if (D2) {
+  ClassTemplateSpecializationDecl *PrevDecl = D2;
+  RecordDecl *FoundDef = D2 ? D2->getDefinition() : nullptr;
+  if (FoundDef) {
     // We already have a class template specialization with these template
     // arguments.
     
     // FIXME: Check for specialization vs. instantiation errors.
-    
-    if (RecordDecl *FoundDef = D2->getDefinition()) {
-      if (!D->isCompleteDefinition() || IsStructuralMatch(D, FoundDef)) {
-        // The record types structurally match, or the "from" translation
-        // unit only had a forward declaration anyway; call it the same
-        // function.
-        return Importer.Imported(D, FoundDef);
-      }
+    if (!D->isCompleteDefinition() || IsStructuralMatch(D, FoundDef)) {
+      // The record types structurally match, or the "from" translation
+      // unit only had a forward declaration anyway; call it the same
+      // function.
+      return Importer.Imported(D, FoundDef);
     }
   } else {
     // Create a new specialization.
@@ -4317,7 +4346,7 @@ Decl *ASTNodeImporter::VisitClassTemplateSpecializationDecl(
                                                    StartLoc, IdLoc,
                                                    ClassTemplate,
                                                    TemplateArgs,
-                                                   /*PrevDecl=*/nullptr);
+                                                   PrevDecl);
     }
 
     D2->setSpecializationKind(D->getSpecializationKind());
