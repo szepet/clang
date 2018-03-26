@@ -407,6 +407,7 @@ using namespace clang;
 QualType ASTNodeImporter::VisitType(const Type *T) {
   Importer.FromDiag(SourceLocation(), diag::err_unsupported_ast_node)
     << T->getTypeClassName();
+  Importer.setEncounteredUnsupportedNode(true);
   return QualType();
 }
 
@@ -992,6 +993,7 @@ bool ASTNodeImporter::ImportDeclParts(NamedDecl *D, DeclContext *&DC,
     if (DoNotImport) {
       Importer.FromDiag(D->getLocation(), diag::err_unsupported_ast_node)
           << D->getDeclKindName();
+      Importer.setEncounteredUnsupportedNode(true);
       return true;
     }
   }
@@ -1532,6 +1534,7 @@ bool ASTNodeImporter::IsStructuralMatch(VarTemplateDecl *From,
 Decl *ASTNodeImporter::VisitDecl(Decl *D) {
   Importer.FromDiag(D->getLocation(), diag::err_unsupported_ast_node)
     << D->getDeclKindName();
+  Importer.setEncounteredUnsupportedNode(true);
   return nullptr;
 }
 
@@ -4674,6 +4677,7 @@ DeclGroupRef ASTNodeImporter::ImportDeclGroup(DeclGroupRef DG) {
  Stmt *ASTNodeImporter::VisitStmt(Stmt *S) {
    Importer.FromDiag(S->getLocStart(), diag::err_unsupported_ast_node)
      << S->getStmtClassName();
+   Importer.setEncounteredUnsupportedNode(true);
    return nullptr;
  }
 
@@ -6698,10 +6702,10 @@ void ASTNodeImporter::ImportOverrides(CXXMethodDecl *ToMethod,
 ASTImporter::ASTImporter(ASTContext &ToContext, FileManager &ToFileManager,
                          ASTContext &FromContext, FileManager &FromFileManager,
                          bool MinimalImport)
-  : ToContext(ToContext), FromContext(FromContext),
-    ToFileManager(ToFileManager), FromFileManager(FromFileManager),
-    Minimal(MinimalImport), LastDiagFromFrom(false)
-{
+    : ToContext(ToContext), FromContext(FromContext),
+      ToFileManager(ToFileManager), FromFileManager(FromFileManager),
+      Minimal(MinimalImport), LastDiagFromFrom(false),
+      encounteredUnsupportedNode(false) {
   ImportedDecls[FromContext.getTranslationUnitDecl()]
     = ToContext.getTranslationUnitDecl();
 }
