@@ -92,7 +92,8 @@ namespace clang {
     void ImportDefinitionIfNeeded(Decl *FromD, Decl *ToD = nullptr);
     void ImportDeclarationNameLoc(const DeclarationNameInfo &From,
                                   DeclarationNameInfo& To);
-    void ImportDeclContext(DeclContext *FromDC, bool ForceImport = false);
+    void ImportDeclContext(DeclContext *FromDC, bool ForceImport = false,
+                           DeclContext *ToDC = nullptr);
 
     bool ImportCastPath(CastExpr *E, CXXCastPath &Path);
 
@@ -131,7 +132,7 @@ namespace clang {
     bool ImportDefinition(ObjCProtocolDecl *From, ObjCProtocolDecl *To,
                           ImportDefinitionKind Kind = IDK_Default);
     TemplateParameterList *ImportTemplateParameterList(
-                                                 TemplateParameterList *Params);
+        TemplateParameterList *Params);
     TemplateArgument ImportTemplateArgument(const TemplateArgument &From);
     Optional<TemplateArgumentLoc> ImportTemplateArgumentLoc(
         const TemplateArgumentLoc &TALoc);
@@ -1082,21 +1083,69 @@ ASTNodeImporter::ImportDeclarationNameLoc(const DeclarationNameInfo &From,
   llvm_unreachable("Unknown name kind.");
 }
 
-void ASTNodeImporter::ImportDeclContext(DeclContext *FromDC, bool ForceImport) {  
+void ASTNodeImporter::ImportDeclContext(DeclContext *FromDC, bool ForceImport,
+                                        DeclContext *ToDC) {
   if (Importer.isMinimalImport() && !ForceImport) {
     Importer.ImportContext(FromDC);
     return;
   }
-  
-  for (auto *From : FromDC->decls())
-    Importer.Import(From);
+  llvm::SmallVector<Decl*, 8> ImportedDecls;
+  for (Decl *From : FromDC->decls())
+    ImportedDecls.push_back(Importer.Import(From));
+
+  if (ToDC) { // Restore the order. O(n*n) in worst case, because the remove.
+
+    llvm::SmallDenseSet<Decl *, 2> MissingDecls;
+
+    // Frist, remove all declarations, which may be in wrong order in the
+    // lexical DeclContext.
+    for (Decl *ToD : ImportedDecls) { // O(n)
+      if (ToD && ToD->getLexicalDeclContext() == ToDC) {
+        if (ToDC->containsDecl(ToD)) { // containsDecl is O(1)
+          ToDC->removeDecl(ToD);       // O(n)
+        } else {
+          MissingDecls.insert(ToD);
+
+          const SourceLocation &Loc = ToD->getLocation();
+          const SourceManager &SM = ToD->getASTContext().getSourceManager();
+          SourceLocation SpellingLoc = SM.getSpellingLoc(Loc);
+          PresumedLoc PLoc = SM.getPresumedLoc(SpellingLoc);
+
+          FromDC->getParentASTContext().getDiagnostics().Report(
+              diag::warn_ast_importer_missing_decl_in_decl_context)
+              << ToD->getDeclKindName() << PLoc.getFilename() << PLoc.getLine()
+              << PLoc.getColumn();
+        }
+      }
+    }
+    // Add the declarations, but this time in the correct order.
+    for (Decl *ToD : ImportedDecls) {
+      if (ToD && ToD->getLexicalDeclContext() == ToDC) {
+        // FIXME remove this if, when all Decls are properly imported
+        if (MissingDecls.count(ToD) == 0) {
+          ToDC->addDeclInternal(ToD);
+        }
+      }
+    }
+  }
+}
+
+static void setTypedefNameForAnonDecl(TagDecl *From, TagDecl *To,
+                                      ASTImporter &Importer) {
+  if (TypedefNameDecl *FromTypedef = From->getTypedefNameForAnonDecl()) {
+    auto *ToTypedef =
+      cast_or_null<TypedefNameDecl>(Importer.Import(FromTypedef));
+    assert (ToTypedef && "Failed to import typedef of an anonymous structure");
+
+    To->setTypedefNameForAnonDecl(ToTypedef);
+  }
 }
 
 bool ASTNodeImporter::ImportDefinition(RecordDecl *From, RecordDecl *To, 
                                        ImportDefinitionKind Kind) {
   if (To->getDefinition() || To->isBeingDefined()) {
     if (Kind == IDK_Everything)
-      ImportDeclContext(From, /*ForceImport=*/true);
+      ImportDeclContext(From, /*ForceImport=*/true, To);
     
     return false;
   }
@@ -1200,7 +1249,7 @@ bool ASTNodeImporter::ImportDefinition(RecordDecl *From, RecordDecl *To,
   }
   
   if (shouldForceImportDeclContext(Kind))
-    ImportDeclContext(From, /*ForceImport=*/true);
+    ImportDeclContext(From, /*ForceImport=*/true, To);
   
   To->completeDefinition();
   return false;
