@@ -23,7 +23,6 @@
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include <deque>
 
 namespace clang {
   class ASTNodeImporter : public TypeVisitor<ASTNodeImporter, QualType>,
@@ -1558,10 +1557,22 @@ Decl *ASTNodeImporter::VisitTypedefNameDecl(TypedefNameDecl *D, bool IsAlias) {
       if (!FoundDecls[I]->isInIdentifierNamespace(IDNS))
         continue;
       if (TypedefNameDecl *FoundTypedef =
-            dyn_cast<TypedefNameDecl>(FoundDecls[I])) {
-        if (Importer.IsStructurallyEquivalent(D->getUnderlyingType(),
-                                            FoundTypedef->getUnderlyingType()))
-          return Importer.Imported(D, FoundTypedef);
+              dyn_cast<TypedefNameDecl>(FoundDecls[I])) {
+        if (Importer.IsStructurallyEquivalent(
+                D->getUnderlyingType(), FoundTypedef->getUnderlyingType())) {
+          QualType OriginalUT = D->getUnderlyingType();
+          QualType FoundUT = FoundTypedef->getUnderlyingType();
+          // If the found definition is incomplete
+          // but it should be complete import
+          // FIXME: maybe this check should go into
+          // IsStructurallyEquivalent() function?
+          if (!OriginalUT->isIncompleteType() &&
+              FoundUT->isIncompleteType()) {
+            continue;
+          } else {
+            return Importer.Imported(D, FoundTypedef);
+          }
+        }
       }
 
       ConflictingDecls.push_back(FoundDecls[I]);
