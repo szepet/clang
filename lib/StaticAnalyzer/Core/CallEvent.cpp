@@ -357,23 +357,24 @@ ArrayRef<ParmVarDecl*> AnyFunctionCall::parameters() const {
 
 RuntimeDefinition AnyFunctionCall::getRuntimeDefinition() const {
   const FunctionDecl *FD = getDecl();
+  if (!FD)
+    return RuntimeDefinition();
+
   // Note that the AnalysisDeclContext will have the FunctionDecl with
   // the definition (if one exists).
-  if (FD) {
-    AnalysisDeclContext *AD =
-      getLocationContext()->getAnalysisDeclContext()->
-      getManager()->getContext(FD);
-    bool IsAutosynthesized;
-    Stmt* Body = AD->getBody(IsAutosynthesized);
-    DEBUG({
-        if (IsAutosynthesized)
-          llvm::dbgs() << "Using autosynthesized body for " << FD->getName()
-                       << "\n";
-    });
-    if (Body) {
-      const Decl* Decl = AD->getDecl();
-      return RuntimeDefinition(Decl);
-    }
+  AnalysisDeclContext *AD =
+      getLocationContext()->getAnalysisDeclContext()->getManager()->getContext(
+          FD);
+  bool IsAutosynthesized;
+  Stmt* Body = AD->getBody(IsAutosynthesized);
+  DEBUG({
+    if (IsAutosynthesized)
+      llvm::dbgs() << "Using autosynthesized body for " << FD->getName()
+                   << "\n";
+  });
+  if (Body) {
+    const Decl* Decl = AD->getDecl();
+    return RuntimeDefinition(Decl);
   }
 
   SubEngine *Engine = getState()->getStateManager().getOwningEngine();
@@ -386,15 +387,15 @@ RuntimeDefinition AnyFunctionCall::getRuntimeDefinition() const {
   cross_tu::CrossTranslationUnitContext &CTUCtx =
       *Engine->getCrossTranslationUnitContext();
   llvm::Expected<const FunctionDecl *> CTUDeclOrError =
-      CTUCtx.getCrossTUDefinition(FD, Opts.getCTUDir(),
-          Opts.getCTUIndexName(), Opts.AnalyzerDisplayCTUProgress);
+      CTUCtx.getCrossTUDefinition(FD, Opts.getCTUDir(), Opts.getCTUIndexName(),
+                                  Opts.AnalyzerDisplayCTUProgress);
 
   if (!CTUDeclOrError) {
     handleAllErrors(CTUDeclOrError.takeError(),
                     [&](const cross_tu::IndexError &IE) {
                       CTUCtx.emitCrossTUDiagnostics(IE);
                     });
-    return {};
+    return RuntimeDefinition();
   }
 
   return RuntimeDefinition(*CTUDeclOrError);
