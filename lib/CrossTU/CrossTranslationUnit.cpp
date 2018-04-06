@@ -316,7 +316,8 @@ llvm::Expected<ASTUnit *> CrossTranslationUnitContext::loadExternalAST(
       FileASTUnitMap[ASTFileName] = std::move(LoadedUnit);
       if (DisplayCTUProgress) {
         llvm::errs() << "ANALYZE (CTU loaded AST for source file): "
-                     << Unit->getMainFileName() << "\n";
+                     // Drop the ".ast" extension.
+                     << ASTFileName.drop_back(4) << "\n";
       }
     } else {
       Unit = ASTCacheEntry->second.get();
