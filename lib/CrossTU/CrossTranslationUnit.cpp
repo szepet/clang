@@ -207,7 +207,7 @@ CrossTranslationUnitContext::getCrossTUDefinition(const FunctionDecl *FD,
     return llvm::make_error<IndexError>(
         index_error_code::failed_to_generate_usr);
   llvm::Expected<ASTUnit *> ASTUnitOrError =
-      loadExternalAST(LookupFnName, CrossTUDir, IndexName);
+      loadExternalAST(LookupFnName, CrossTUDir, IndexName, DisplayCTUProgress);
   if (!ASTUnitOrError) {
     ++NumNoUnit;
     return ASTUnitOrError.takeError();
@@ -244,11 +244,6 @@ CrossTranslationUnitContext::getCrossTUDefinition(const FunctionDecl *FD,
     return llvm::make_error<IndexError>(index_error_code::lang_mismatch);
   }
 
-  if (DisplayCTUProgress) {
-    llvm::errs() << "ANALYZE (CTU loaded AST for source file): "
-                 << Unit->getMainFileName() << "\n";
-  }
-
   TranslationUnitDecl *TU = Unit->getASTContext().getTranslationUnitDecl();
   if (const FunctionDecl *ResultDecl =
           findFunctionInDeclContext(TU, LookupFnName))
@@ -276,7 +271,8 @@ void CrossTranslationUnitContext::emitCrossTUDiagnostics(const IndexError &IE) {
 }
 
 llvm::Expected<ASTUnit *> CrossTranslationUnitContext::loadExternalAST(
-    StringRef LookupName, StringRef CrossTUDir, StringRef IndexName) {
+    StringRef LookupName, StringRef CrossTUDir, StringRef IndexName,
+    bool DisplayCTUProgress) {
   // FIXME: The current implementation only supports loading functions with
   //        a lookup name from a single translation unit. If multiple
   //        translation units contains functions with the same lookup name an
@@ -318,6 +314,10 @@ llvm::Expected<ASTUnit *> CrossTranslationUnitContext::loadExternalAST(
           ASTUnit::LoadEverything, Diags, CI.getFileSystemOpts()));
       Unit = LoadedUnit.get();
       FileASTUnitMap[ASTFileName] = std::move(LoadedUnit);
+      if (DisplayCTUProgress) {
+        llvm::errs() << "ANALYZE (CTU loaded AST for source file): "
+                     << Unit->getMainFileName() << "\n";
+      }
     } else {
       Unit = ASTCacheEntry->second.get();
     }
