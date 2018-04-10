@@ -152,6 +152,25 @@ void testImport(const std::string &FromCode, Language FromLang,
                              Verifier, AMatcher));
 }
 
+template<typename NodeType, typename MatcherType>
+void testImport(const std::string &FromCode,
+                Language FromLang, const ArgVector &FromArgsExtra,
+                const std::string &ToCode,
+                Language ToLang, const ArgVector &ToArgsExtra,
+                MatchVerifier<NodeType> &Verifier,
+                const MatcherType &AMatcher) {
+  auto RunOptsFrom = getRunOptionsForLanguage(FromLang);
+  auto RunOptsTo = getRunOptionsForLanguage(ToLang);
+  for (auto FromArgs : RunOptsFrom) {
+    for (auto ToArgs : RunOptsTo) {
+      FromArgs.insert(FromArgs.end(), FromArgsExtra.begin(), FromArgsExtra.end());
+      ToArgs.insert(ToArgs.end(), ToArgsExtra.begin(), ToArgsExtra.end());
+      EXPECT_TRUE(testImport(FromCode, FromArgs, ToCode, ToArgs,
+                             Verifier, AMatcher));
+    }
+  }
+}
+
 const StringRef DeclToImportID = "declToImport";
 
 // This class provides generic methods to write tests which can check internal
@@ -315,7 +334,7 @@ AST_MATCHER_P(RecordDecl, hasFieldOrder, std::vector<StringRef>, Order) {
 TEST(ImportExpr, ImportStringLiteral) {
   MatchVerifier<Decl> Verifier;
   testImport("void declToImport() { \"foo\"; }",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionDecl(
                hasBody(
                  compoundStmt(
@@ -324,7 +343,7 @@ TEST(ImportExpr, ImportStringLiteral) {
                        hasType(
                          asString("const char [4]"))))))));
   testImport("void declToImport() { L\"foo\"; }",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionDecl(
                hasBody(
                  compoundStmt(
@@ -333,7 +352,7 @@ TEST(ImportExpr, ImportStringLiteral) {
                        hasType(
                         asString("const wchar_t [4]"))))))));
   testImport("void declToImport() { \"foo\" \"bar\"; }",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionDecl(
                hasBody(
                  compoundStmt(
@@ -346,7 +365,7 @@ TEST(ImportExpr, ImportStringLiteral) {
 TEST(ImportExpr, ImportGNUNullExpr) {
   MatchVerifier<Decl> Verifier;
   testImport("void declToImport() { __null; }",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionDecl(
                hasBody(
                  compoundStmt(
@@ -358,7 +377,7 @@ TEST(ImportExpr, ImportGNUNullExpr) {
 TEST(ImportExpr, ImportCXXNullPtrLiteralExpr) {
   MatchVerifier<Decl> Verifier;
   testImport("void declToImport() { nullptr; }",
-             Lang_CXX11, "", Lang_CXX11, Verifier,
+             Lang_CXX11, {"-Wno-unused-value"}, "", Lang_CXX11, {}, Verifier,
              functionDecl(
                hasBody(
                  compoundStmt(
@@ -367,10 +386,10 @@ TEST(ImportExpr, ImportCXXNullPtrLiteralExpr) {
 }
 
 
-TEST(ImportExpr, ImportFloatinglLiteralExpr) {
+TEST(ImportExpr, ImportFloatingLiteralExpr) {
   MatchVerifier<Decl> Verifier;
   testImport("void declToImport() { 1.0; }",
-             Lang_C, "", Lang_C, Verifier,
+             Lang_C, {"-Wno-unused-value"}, "", Lang_C, {}, Verifier,
              functionDecl(
                hasBody(
                  compoundStmt(
@@ -379,7 +398,7 @@ TEST(ImportExpr, ImportFloatinglLiteralExpr) {
                        equals(1.0),
                        hasType(asString("double"))))))));
   testImport("void declToImport() { 1.0e-5f; }",
-              Lang_C, "", Lang_C, Verifier,
+             Lang_C, {"-Wno-unused-value"}, "", Lang_C, {}, Verifier,
               functionDecl(
                 hasBody(
                   compoundStmt(
@@ -394,7 +413,7 @@ TEST(ImportExpr, ImportCompoundLiteralExpr) {
   testImport("void declToImport() {"
              "  struct s { int x; long y; unsigned z; }; "
              "  (struct s){ 42, 0L, 1U }; }",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionDecl(
                hasBody(
                  compoundStmt(
@@ -416,7 +435,7 @@ TEST(ImportExpr, ImportCompoundLiteralExpr) {
 TEST(ImportExpr, ImportCXXThisExpr) {
   MatchVerifier<Decl> Verifier;
   testImport("class declToImport { void f() { this; } };",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              cxxRecordDecl(
                hasMethod(
                  hasBody(
@@ -441,7 +460,8 @@ TEST(ImportExpr, ImportAtomicExpr) {
 TEST(ImportExpr, ImportLabelDeclAndAddrLabelExpr) {
   MatchVerifier<Decl> Verifier;
   testImport(
-      "void declToImport() { loop: goto loop; &&loop; }", Lang_C, "", Lang_C,
+      "void declToImport() { loop: goto loop; &&loop; }",
+      Lang_C, {"-Wno-unused-value"}, "", Lang_C, {},
       Verifier,
       functionDecl(hasBody(compoundStmt(
           has(labelStmt(hasDeclaration(labelDecl(hasName("loop"))))),
@@ -513,7 +533,7 @@ TEST(ImportExpr, ImportConditionalOperator) {
   MatchVerifier<Decl> Verifier;
   testImport(
     "void declToImport() { true ? 1 : -5; }",
-    Lang_CXX, "", Lang_CXX, Verifier,
+    Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
     functionDecl(
       hasBody(
         compoundStmt(
@@ -529,7 +549,8 @@ TEST(ImportExpr, ImportConditionalOperator) {
 TEST(ImportExpr, ImportBinaryConditionalOperator) {
   MatchVerifier<Decl> Verifier;
   testImport(
-    "void declToImport() { 1 ?: -5; }", Lang_CXX, "", Lang_CXX, Verifier,
+    "void declToImport() { 1 ?: -5; }",
+    Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
     functionDecl(
       hasBody(
         compoundStmt(
@@ -597,7 +618,7 @@ TEST(ImportExpr, ImportPredefinedExpr) {
   MatchVerifier<Decl> Verifier;
   // __func__ expands as StringLiteral("declToImport")
   testImport("void declToImport() { __func__; }",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionDecl(
                hasBody(
                  compoundStmt(
@@ -667,7 +688,7 @@ TEST(ImportExpr, CXXTemporaryObjectExpr) {
   testImport(
       "struct C {};"
       "void declToImport() { C c = C(); }",
-      Lang_CXX, "", Lang_CXX, Verifier,
+      Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
       functionDecl(hasBody(compoundStmt(
           hasDescendant(cxxTemporaryObjectExpr())))));
 }
@@ -721,7 +742,7 @@ TEST(ImportExpr, ImportCXXDependentScopeMemberExpr) {
              "  d.t;"
              "}"
              "void instantiate() { declToImport<int>(); }",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionTemplateDecl(has(functionDecl(
                  has(compoundStmt(has(cxxDependentScopeMemberExpr())))))));
   testImport("template <typename T> struct C { T t; };"
@@ -730,7 +751,7 @@ TEST(ImportExpr, ImportCXXDependentScopeMemberExpr) {
              "  (&d)->t;"
              "}"
              "void instantiate() { declToImport<int>(); }",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionTemplateDecl(has(functionDecl(
                  has(compoundStmt(has(cxxDependentScopeMemberExpr())))))));
 }
@@ -757,12 +778,13 @@ const internal::VariadicDynCastAllOfMatcher<Decl, VarTemplateSpecializationDecl>
     varTemplateSpecializationDecl;
 
 TEST(ImportDecl, ImportVarTemplate) {
+  // FIXME: should use a Lang_CXX14?
   MatchVerifier<Decl> Verifier;
   testImport(
       "template <typename T>"
       "T pi = T(3.1415926535897932385L);"
       "void declToImport() { pi<int>; }",
-      Lang_CXX11, "", Lang_CXX11, Verifier,
+      Lang_CXX11, {"-Wno-unused-value"}, "", Lang_CXX11, {}, Verifier,
       functionDecl(
           hasBody(has(declRefExpr(to(varTemplateSpecializationDecl())))),
           unless(hasAncestor(translationUnitDecl(has(varDecl(
@@ -848,7 +870,7 @@ TEST(ImportExpr, ImportTypeTraitExpr) {
   testImport("void declToImport() { "
              "  __builtin_types_compatible_p(int, int);"
              "}",
-             Lang_C, "", Lang_C, Verifier,
+             Lang_C, {"-Wno-unused-value"}, "", Lang_C, {}, Verifier,
              functionDecl(
                hasBody(
                  compoundStmt(
@@ -866,7 +888,7 @@ TEST(ImportExpr, ImportCXXTypeidExpr) {
       "  int x;"
       "  auto a = typeid(int); auto b = typeid(x);"
       "}",
-      Lang_CXX11, "", Lang_CXX11, Verifier,
+      Lang_CXX11, {"-Wno-unused-value"}, "", Lang_CXX11, {}, Verifier,
       functionDecl(
           hasDescendant(varDecl(
               hasName("a"), hasInitializer(hasDescendant(cxxTypeidExpr())))),
@@ -880,7 +902,7 @@ TEST(ImportExpr, ImportTypeTraitExprValDep) {
              "  void m() { __is_pod(T); }"
              "};"
              "void f() { declToImport<int>().m(); }",
-             Lang_CXX11, "", Lang_CXX11, Verifier,
+             Lang_CXX11, {"-Wno-unused-value"}, "", Lang_CXX11, {}, Verifier,
              classTemplateDecl(
                has(
                  cxxRecordDecl(
@@ -913,7 +935,7 @@ TEST(ImportDecl, ImportUsingDecl) {
   MatchVerifier<Decl> Verifier;
   testImport("namespace foo { int bar; }"
              "int declToImport(){ using foo::bar; }",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-return-type"}, "", Lang_CXX, {}, Verifier,
              functionDecl(
                has(
                  compoundStmt(
@@ -923,11 +945,11 @@ TEST(ImportDecl, ImportUsingDecl) {
                          usingDecl())))))));
 }
 
-TEST(ImportDecl, ImportRecordDeclInFuncParams) {
+TEST(ImportDecl, DISABLED_ImportRecordDeclInFuncParams) {
   MatchVerifier<Decl> Verifier;
   testImport(
       "int declToImport(struct data_t{int a;int b;} *d){ return 0; }",
-      Lang_CXX, "", Lang_CXX, Verifier,
+      Lang_C, "", Lang_C, Verifier,
       functionDecl());
 }
 
@@ -1172,7 +1194,7 @@ TEST(ImportExpr, ImportDependentScopeDeclRefExpr) {
              "S<T>::foo;"
              "}"
              "void instantiate() { declToImport<void>(); }",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionTemplateDecl(has(functionDecl(has(compoundStmt(
                  has(dependentScopeDeclRefExpr())))))));
 
@@ -1183,7 +1205,7 @@ TEST(ImportExpr, ImportDependentScopeDeclRefExpr) {
              "S<T>::template foo;"
              "}"
              "void instantiate() { declToImport<void>(); }",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionTemplateDecl(has(functionDecl(has(compoundStmt(
                  has(dependentScopeDeclRefExpr())))))));
 
@@ -1194,7 +1216,7 @@ TEST(ImportExpr, ImportDependentScopeDeclRefExpr) {
              "S<T>::template foo<>;"
              "}"
              "void instantiate() { declToImport<void>(); }",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionTemplateDecl(has(functionDecl(has(compoundStmt(
                  has(dependentScopeDeclRefExpr())))))));
 
@@ -1205,7 +1227,7 @@ TEST(ImportExpr, ImportDependentScopeDeclRefExpr) {
              "S<T>::template foo<T>;"
              "}"
              "void instantiate() { declToImport<void>(); }",
-              Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
               functionTemplateDecl(has(functionDecl(has(compoundStmt(
                   has(dependentScopeDeclRefExpr())))))));
 }
@@ -1237,7 +1259,7 @@ TEST(ImportExpr, CXXOperatorCallExpr) {
   testImport("class declToImport {"
              "  void f() { *this = declToImport(); }"
              "};",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              cxxRecordDecl(has(cxxMethodDecl(hasBody(compoundStmt(
                  has(exprWithCleanups(
                      has(cxxOperatorCallExpr())))))))));
@@ -1248,14 +1270,14 @@ TEST(ImportExpr, CXXNamedCastExpr) {
   testImport("void declToImport() {"
              "  const_cast<char*>(\"hello\");"
              "}",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionDecl(hasBody(compoundStmt(has(
                  cxxConstCastExpr())))));
   testImport("void declToImport() {"
              "  double d;"
              "  reinterpret_cast<int*>(&d);"
              "}",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionDecl(hasBody(compoundStmt(has(
                  cxxReinterpretCastExpr())))));
   testImport("struct A {virtual ~A() {} };"
@@ -1263,7 +1285,7 @@ TEST(ImportExpr, CXXNamedCastExpr) {
              "void declToImport() {"
              "  dynamic_cast<B*>(new A);"
              "}",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionDecl(hasBody(compoundStmt(has(
                  cxxDynamicCastExpr())))));
   testImport("struct A {virtual ~A() {} };"
@@ -1271,7 +1293,7 @@ TEST(ImportExpr, CXXNamedCastExpr) {
               "void declToImport() {"
               "  static_cast<B*>(new A);"
               "}",
-              Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
               functionDecl(hasBody(compoundStmt(has(
                   cxxStaticCastExpr())))));
 }
@@ -1284,7 +1306,7 @@ TEST(ImportExpr, ImportUnresolvedLookupExpr) {
              "  ::template foo<T>;"
              "}"
              "void instantiate() { declToImport<int>(); }",
-             Lang_CXX, "", Lang_CXX, Verifier,
+             Lang_CXX, {"-Wno-unused-value"}, "", Lang_CXX, {}, Verifier,
              functionTemplateDecl(has(functionDecl(
                  has(compoundStmt(has(unresolvedLookupExpr())))))));
 }
