@@ -97,6 +97,9 @@ testImport(const std::string &FromCode, const ArgVector &FromArgs,
   ASTContext &FromCtx = FromAST->getASTContext(),
       &ToCtx = ToAST->getASTContext();
 
+  FromAST->beginSourceFile();
+  ToAST->beginSourceFile();
+  
   // Add input.cc to virtual file system so importer can 'find' it
   // while importing SourceLocations.
   createVirtualFileIfNeeded(ToAST.get(), InputFileName, FromCode);
@@ -232,10 +235,12 @@ public:
 
     FromTUs.emplace_back(FromSrcCode, InputFileName, FromArgs);
     TU &FromTU = FromTUs.back();
+    FromTU.Unit->beginSourceFile();
 
     ToCode = ToSrcCode;
     assert(!ToAST);
     ToAST = tooling::buildASTFromCodeWithArgs(ToCode, ToArgs, OutputFileName);
+    ToAST->beginSourceFile();
 
     ASTContext &FromCtx = FromTU.Unit->getASTContext(),
                &ToCtx = ToAST->getASTContext();
@@ -272,6 +277,7 @@ public:
     ArgVector Args = getArgVectorForLanguage(Lang);
     FromTUs.emplace_back(SrcCode, FileName, Args);
     TU &Tu = FromTUs.back();
+    Tu.Unit->beginSourceFile();
 
     return Tu.TUDecl;
   }
@@ -285,6 +291,7 @@ public:
       // Build the AST from an empty file.
       ToAST =
           tooling::buildASTFromCodeWithArgs(/*Code=*/"", ToArgs, "empty.cc");
+      ToAST->beginSourceFile();
     }
 
     // Create a virtual file in the To Ctx which corresponds to the file from
@@ -300,6 +307,7 @@ public:
                &ToCtx = ToAST->getASTContext();
     ASTImporter Importer(ToCtx, ToAST->getFileManager(), FromCtx,
                          FromCtx.getSourceManager().getFileManager(), false);
+
     return Importer.Import(From);
   }
 
@@ -945,12 +953,16 @@ TEST(ImportDecl, ImportUsingDecl) {
                          usingDecl())))))));
 }
 
-TEST(ImportDecl, DISABLED_ImportRecordDeclInFuncParams) {
-  MatchVerifier<Decl> Verifier;
-  testImport(
+TEST_P(ASTImporterTestBase, ImportRecordDeclInFuncParams) {
+  // This construct is not supported by ASTImporter.
+  Decl *FromTU = getTuDecl(
       "int declToImport(struct data_t{int a;int b;} *d){ return 0; }",
-      Lang_C, "", Lang_C, Verifier,
-      functionDecl());
+      Lang_C,
+      "input.c");
+  auto From = FirstDeclMatcher<FunctionDecl>().match(FromTU, functionDecl());
+  ASSERT_TRUE(From);
+  auto To = Import(From, Lang_C);
+  EXPECT_EQ(To, nullptr);
 }
 
 /// \brief Matches shadow declarations introduced into a scope by a
