@@ -401,6 +401,8 @@ public:
 
   bool isMainFileAST() const { return MainFileIsAST; }
 
+  void beginSourceFile();
+  
   bool isUnsafeToFree() const { return UnsafeToFree; }
   void setUnsafeToFree(bool Value) { UnsafeToFree = Value; }
 

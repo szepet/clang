@@ -1,6 +1,7 @@
 // RUN: %clang_cc1 -emit-pch -o %t.1.ast %S/Inputs/struct1.c
 // RUN: %clang_cc1 -emit-pch -o %t.2.ast %S/Inputs/struct2.c
-// RUN: not %clang_cc1 -Werror=odr -ast-merge %t.1.ast -ast-merge %t.2.ast -fsyntax-only %s 2>&1 | FileCheck %s
+// RUN: %clang_cc1 -emit-pch -o %t.3.ast %S/Inputs/struct3.c
+// RUN: not %clang_cc1 -Werror=odr -ast-merge %t.1.ast -ast-merge %t.2.ast -ast-merge %t.3.ast -fsyntax-only %s 2>&1 | FileCheck %s
 
 // CHECK: struct1.c:13:8: error: type 'struct S1' has incompatible definitions in different translation units
 // CHECK: struct1.c:15:7: note: field 'field2' has type 'int' here
@@ -52,4 +53,5 @@
 // CHECK: struct2.c:129:9: note: field 'S' has type 'struct (anonymous struct at [[PATH_TO_INPUTS]]/struct2.c:127:7)' here
 // CHECK: struct2.c:138:3: error: external variable 'x16' declared with incompatible types in different translation units ('struct DeepUnnamedError' vs. 'struct DeepUnnamedError')
 // CHECK: struct1.c:141:3: note: declared here with type 'struct DeepUnnamedError'
+// CHECK: struct3.c:2:14: warning: cannot import unsupported AST node Record
 // CHECK: 21 errors generated
