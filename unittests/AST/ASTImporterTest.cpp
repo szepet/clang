@@ -193,11 +193,24 @@ class ASTImporterTestBase : public ::testing::TestWithParam<ArgVector> {
     std::string FileName;
     std::unique_ptr<ASTUnit> Unit;
     TranslationUnitDecl *TUDecl = nullptr;
+    std::unique_ptr<ASTImporter> Importer;
     TU(StringRef Code, StringRef FileName, ArgVector Args)
         : Code(Code), FileName(FileName),
           Unit(tooling::buildASTFromCodeWithArgs(this->Code, Args,
                                                  this->FileName)),
-          TUDecl(Unit->getASTContext().getTranslationUnitDecl()) {}
+          TUDecl(Unit->getASTContext().getTranslationUnitDecl()) {
+      Unit->beginSourceFile();
+    }
+    
+    Decl *import(ASTUnit *ToAST, Decl *FromDecl) {
+      assert(ToAST);
+      if (!Importer) {
+        Importer.reset(new ASTImporter(
+            ToAST->getASTContext(), ToAST->getFileManager(),
+            Unit->getASTContext(), Unit->getFileManager(), false));
+      }
+      return Importer->Import(FromDecl);
+    }
   };
 
   // We may have several From contexts and related translation units. In each
@@ -235,20 +248,15 @@ public:
 
     FromTUs.emplace_back(FromSrcCode, InputFileName, FromArgs);
     TU &FromTU = FromTUs.back();
-    FromTU.Unit->beginSourceFile();
 
     ToCode = ToSrcCode;
     assert(!ToAST);
     ToAST = tooling::buildASTFromCodeWithArgs(ToCode, ToArgs, OutputFileName);
     ToAST->beginSourceFile();
 
-    ASTContext &FromCtx = FromTU.Unit->getASTContext(),
-               &ToCtx = ToAST->getASTContext();
+    ASTContext &FromCtx = FromTU.Unit->getASTContext();
 
     createVirtualFileIfNeeded(ToAST.get(), InputFileName, FromTU.Code);
-
-    ASTImporter Importer(ToCtx, ToAST->getFileManager(), FromCtx,
-                         FromTU.Unit->getFileManager(), false);
 
     IdentifierInfo *ImportedII = &FromCtx.Idents.get(Identifier);
     assert(ImportedII && "Declaration with the given identifier "
@@ -260,13 +268,14 @@ public:
 
     assert(FoundDecls.size() == 1);
 
-    Decl *Imported = Importer.Import(FoundDecls.front());
+    Decl *Imported = FromTU.import(ToAST.get(), FoundDecls.front());
+    
     assert(Imported);
     return std::make_tuple(*FoundDecls.begin(), Imported);
   }
 
   // Creates a TU decl for the given source code.
-  // May be called several times in a given test.
+  // May be called several times in a given test (with different file name).
   TranslationUnitDecl *getTuDecl(StringRef SrcCode, Language Lang,
                                  StringRef FileName = "input.cc") {
     assert(
@@ -277,7 +286,6 @@ public:
     ArgVector Args = getArgVectorForLanguage(Lang);
     FromTUs.emplace_back(SrcCode, FileName, Args);
     TU &Tu = FromTUs.back();
-    Tu.Unit->beginSourceFile();
 
     return Tu.TUDecl;
   }
@@ -303,12 +311,7 @@ public:
     assert(It != FromTUs.end());
     createVirtualFileIfNeeded(ToAST.get(), It->FileName, It->Code);
 
-    ASTContext &FromCtx = From->getASTContext(),
-               &ToCtx = ToAST->getASTContext();
-    ASTImporter Importer(ToCtx, ToAST->getFileManager(), FromCtx,
-                         FromCtx.getSourceManager().getFileManager(), false);
-
-    return Importer.Import(From);
+    return It->import(ToAST.get(), From);
   }
 
   ~ASTImporterTestBase() {
@@ -2552,6 +2555,49 @@ TEST_P(CanonicalRedeclChain, ShouldBeSameForAllDeclInTheChain) {
 
   EXPECT_THAT(RedeclsD0, ::testing::ContainerEq(RedeclsD1));
   EXPECT_THAT(RedeclsD1, ::testing::ContainerEq(RedeclsD2));
+}
+
+TEST_P(ASTImporterTestBase, ImportDoesUpdateUsedFlag) {
+  auto Pattern = varDecl(hasName("x"));
+  VarDecl *Imported1;
+  {
+    Decl *FromTU = getTuDecl("extern int x;", Lang_CXX, "input0.cc");
+    auto *FromD = FirstDeclMatcher<VarDecl>().match(FromTU, Pattern);
+    Imported1 = cast<VarDecl>(Import(FromD, Lang_CXX));
+  }
+  VarDecl *Imported2;
+  {
+    Decl *FromTU = getTuDecl("int x;", Lang_CXX, "input1.cc");
+    auto *FromD = FirstDeclMatcher<VarDecl>().match(FromTU, Pattern);
+    Imported2 = cast<VarDecl>(Import(FromD, Lang_CXX));
+  }
+  EXPECT_EQ(Imported1->getCanonicalDecl(), Imported2->getCanonicalDecl());
+  EXPECT_FALSE(Imported2->isUsed(false));
+  {
+    Decl *FromTU = getTuDecl(
+        "extern int x; int f() { return x; }", Lang_CXX, "input2.cc");
+    auto *FromD =
+        FirstDeclMatcher<FunctionDecl>().match(FromTU, functionDecl());
+    Import(FromD, Lang_CXX);
+  }
+  EXPECT_TRUE(Imported2->isUsed(false));
+}
+
+TEST_P(ASTImporterTestBase, ReimportWithUsedFlag) {
+  auto Pattern = varDecl(hasName("x"));
+  
+  Decl *FromTU = getTuDecl("int x;", Lang_CXX, "input0.cc");
+  auto *FromD = FirstDeclMatcher<VarDecl>().match(FromTU, Pattern);
+  
+  auto Imported1 = cast<VarDecl>(Import(FromD, Lang_CXX));
+  
+  ASSERT_FALSE(Imported1->isUsed(false));
+
+  FromD->setIsUsed();
+  auto Imported2 = cast<VarDecl>(Import(FromD, Lang_CXX));
+  
+  EXPECT_EQ(Imported1, Imported2);
+  EXPECT_TRUE(Imported2->isUsed(false));
 }
 
 // Note, this test case is automatically reduced from Xerces code.
