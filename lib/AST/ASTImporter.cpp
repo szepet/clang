@@ -4392,8 +4392,13 @@ Decl *ASTNodeImporter::VisitClassTemplateDecl(ClassTemplateDecl *D) {
                                         = dyn_cast<ClassTemplateDecl>(Found)) {
         if (IsStructuralMatch(D, FoundTemplate)) {
           // The class templates structurally match; call it the same template.
-          // FIXME: We may be filling in a forward declaration here. Handle
-          // this case!
+
+          // We found a forward declaration but the class to be imported has a
+          // definition.
+          if (D->isThisDeclarationADefinition() &&
+              !FoundTemplate->isThisDeclarationADefinition())
+            continue;
+
           Importer.MapImported(D->getTemplatedDecl(),
                                FoundTemplate->getTemplatedDecl());
           return Importer.MapImported(D, FoundTemplate);
