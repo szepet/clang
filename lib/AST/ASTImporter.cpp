@@ -46,6 +46,13 @@ namespace clang {
     auto FD = cast<FunctionDecl>(D);
     return getCanonicalForwardRedeclChain<FunctionDecl>(FD);
   }
+  
+  void updateAttrAndFlags(const Decl *From, Decl *To) {
+    // check if some flags or attrs are new in 'From' and copy into 'To'
+    // FIXME: other flags or attrs?
+    if (From->isUsed(false) && !To->isUsed(false))
+      To->setIsUsed();
+  }
 
   class ASTNodeImporter : public TypeVisitor<ASTNodeImporter, QualType>,
                           public DeclVisitor<ASTNodeImporter, Decl *>,
@@ -3121,6 +3128,7 @@ Decl *ASTNodeImporter::VisitVarDecl(VarDecl *D) {
       // An equivalent variable with external linkage has been found. Link 
       // the two declarations, then merge them.
       Importer.MapImported(D, MergeWithVar);
+      updateAttrAndFlags(D, MergeWithVar);
       
       if (VarDecl *DDef = D->getDefinition()) {
         if (VarDecl *ExistingDef = MergeWithVar->getDefinition()) {
@@ -3181,10 +3189,6 @@ Decl *ASTNodeImporter::VisitVarDecl(VarDecl *D) {
   // Templated declarations should never appear in the enclosing DeclContext.
   if (!D->getDescribedVarTemplate())
     LexicalDC->addDeclInternal(ToVar);
-
-  if (!D->isFileVarDecl() &&
-      D->isUsed())
-    ToVar->setIsUsed();
 
   // Merge the initializer.
   if (ImportDefinition(D, ToVar))
@@ -3279,9 +3283,6 @@ Decl *ASTNodeImporter::VisitParmVarDecl(ParmVarDecl *D) {
     ToParm->setScopeInfo(D->getFunctionScopeDepth(),
                          D->getFunctionScopeIndex());
   }
-
-  if (D->isUsed())
-    ToParm->setIsUsed();
 
   return ToParm;
 }
@@ -7004,6 +7005,7 @@ Decl *ASTImporter::GetAlreadyImportedOrNull(Decl *FromD) {
   llvm::DenseMap<Decl *, Decl *>::iterator Pos = ImportedDecls.find(FromD);
   if (Pos != ImportedDecls.end()) {
     Decl *ToD = Pos->second;
+    // FIXME: remove this call from this function
     ASTNodeImporter(*this).ImportDefinitionIfNeeded(FromD, ToD);
     return ToD;
   } else {
@@ -7039,8 +7041,11 @@ Decl *ASTImporter::Import(Decl *FromD) {
 
   // Check whether we've already imported this declaration.
   Decl *ToD = GetAlreadyImportedOrNull(FromD);
-  if (ToD)
+  if (ToD) {
+    // If FromD has some updated flags after last import, apply it
+    updateAttrAndFlags(FromD, ToD);
     return ToD;
+  }
 
   // Import the type.
   ToD = Importer.Visit(FromD);
